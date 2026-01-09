@@ -39,7 +39,7 @@ MDx Code is that tool.
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/mdx-code.git
+git clone https://github.com/dhotherm/mdx-code.git
 cd mdx-code
 
 # Install (creates the 'mdxcode' command)
@@ -59,7 +59,7 @@ mdxcode "Fix the bug in auth.py"
 Or install directly from GitHub:
 
 ```bash
-pip install git+https://github.com/yourusername/mdx-code.git
+pip install git+https://github.com/dhotherm/mdx-code.git
 ```
 
 ---
