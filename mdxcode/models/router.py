@@ -51,7 +51,7 @@ class ModelRouter:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             # Check for cached credentials
-            from models.auth import get_cached_credentials
+            from mdxcode.models.auth import get_cached_credentials
             creds = get_cached_credentials("claude")
             if creds:
                 api_key = creds.get("api_key")

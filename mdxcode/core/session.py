@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from core.context_loader import MDXCodeContext
+from mdxcode.core.context_loader import MDXCodeContext
 
 
 @dataclass

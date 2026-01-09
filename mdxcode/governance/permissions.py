@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional
 
-from core.context_loader import MDXCodeContext
+from mdxcode.core.context_loader import MDXCodeContext
 
 
 @dataclass

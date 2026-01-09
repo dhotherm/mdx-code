@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.session import Session
+from mdxcode.core.session import Session
 
 
 # Where audit logs live
