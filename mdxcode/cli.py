@@ -21,11 +21,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from core.agent_loop import AgentLoop
-from core.context_loader import load_mdxcode_context
-from core.session import Session
-from governance.audit import AuditLogger
-from models.router import ModelRouter
+from mdxcode.core.agent_loop import AgentLoop
+from mdxcode.core.context_loader import load_mdxcode_context
+from mdxcode.core.session import Session
+from mdxcode.governance.audit import AuditLogger
+from mdxcode.models.router import ModelRouter
 
 # The CLI app
 app = typer.Typer(
@@ -136,7 +136,7 @@ def auth(
         mdxcode auth claude
         mdxcode auth openai
     """
-    from models.auth import authenticate
+    from mdxcode.models.auth import authenticate
     
     show_banner()
     console.print(f"\n[cyan]Authenticating with {provider}...[/cyan]\n")
@@ -164,7 +164,7 @@ def security(
         mdxcode security scan --path src/
         mdxcode security fix --auto-fix
     """
-    from governance.security_agent import SecurityAgent
+    from mdxcode.governance.security_agent import SecurityAgent
     
     show_banner()
     console.print(f"\n[cyan]MDx Code Security Agent[/cyan]\n")
@@ -197,7 +197,7 @@ def init():
         console.print("[yellow]MDXCODE.md already exists. Skipping.[/yellow]")
         raise typer.Exit()
     
-    from core.context_loader import create_starter_mdxcode
+    from mdxcode.core.context_loader import create_starter_mdxcode
     
     create_starter_mdxcode(mdxcode_path)
     console.print("[green]✓ Created MDXCODE.md[/green]")
@@ -211,8 +211,8 @@ def status():
     """
     show_banner()
     
-    from core.context_loader import load_mdxcode_context
-    from models.auth import get_authenticated_providers
+    from mdxcode.core.context_loader import load_mdxcode_context
+    from mdxcode.models.auth import get_authenticated_providers
     
     context = load_mdxcode_context()
     providers = get_authenticated_providers()

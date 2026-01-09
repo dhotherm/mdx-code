@@ -9,7 +9,7 @@ The tools that let the AI take action:
 Each tool is simple. The power is in how the AI chains them together.
 """
 
-from tools.registry import Tool, ToolRegistry, get_tool_definitions
+from mdxcode.tools.registry import Tool, ToolRegistry, get_tool_definitions
 
 __all__ = [
     "Tool",

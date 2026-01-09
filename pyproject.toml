@@ -75,7 +75,7 @@ Issues = "https://github.com/dhotherm/mdx-code/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "tools*", "models*", "governance*"]
+include = ["mdxcode*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.md", "*.json"]

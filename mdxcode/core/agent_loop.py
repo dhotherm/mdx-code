@@ -29,11 +29,11 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.markdown import Markdown
 
-from core.session import Session
-from governance.audit import AuditLogger
-from governance.permissions import check_permission, PermissionResult
-from models.router import ModelRouter
-from tools.registry import ToolRegistry, get_tool_definitions
+from mdxcode.core.session import Session
+from mdxcode.governance.audit import AuditLogger
+from mdxcode.governance.permissions import check_permission, PermissionResult
+from mdxcode.models.router import ModelRouter
+from mdxcode.tools.registry import ToolRegistry, get_tool_definitions
 
 
 class AgentLoop:

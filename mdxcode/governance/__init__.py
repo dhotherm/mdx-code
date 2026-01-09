@@ -10,9 +10,9 @@ This is what separates MDx Code from "just another AI tool."
 It's built for environments where trust and compliance matter.
 """
 
-from governance.permissions import PermissionResult, check_permission, PROFILE_RULES
-from governance.audit import AuditLogger, get_recent_logs, parse_log_file
-from governance.security_agent import SecurityAgent, BUILTIN_VULNERABILITY_PATTERNS
+from mdxcode.governance.permissions import PermissionResult, check_permission, PROFILE_RULES
+from mdxcode.governance.audit import AuditLogger, get_recent_logs, parse_log_file
+from mdxcode.governance.security_agent import SecurityAgent, BUILTIN_VULNERABILITY_PATTERNS
 
 __all__ = [
     "PermissionResult",

@@ -7,9 +7,9 @@ The fundamental building blocks:
 - Context Loader: Reading MDXCODE.md files
 """
 
-from core.agent_loop import AgentLoop
-from core.session import Session
-from core.context_loader import (
+from mdxcode.core.agent_loop import AgentLoop
+from mdxcode.core.session import Session
+from mdxcode.core.context_loader import (
     MDXCodeContext,
     load_mdxcode_context,
     parse_mdxcode,

@@ -9,8 +9,8 @@ Today it's Claude. Tomorrow it could be anything.
 That's the point of owning the orchestration.
 """
 
-from models.router import ModelRouter, calculate_cost, MODEL_PRICING
-from models.auth import (
+from mdxcode.models.router import ModelRouter, calculate_cost, MODEL_PRICING
+from mdxcode.models.auth import (
     authenticate,
     get_cached_credentials,
     save_credentials,
