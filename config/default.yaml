@@ -1,0 +1,51 @@
+# MDx Code Default Configuration
+# Copy this file to your project as mdxcode.config.yaml to customize
+
+# Default model to use
+model: claude
+
+# Regulatory profile (standard, financial_services, healthcare, government)
+regulatory_profile: standard
+
+# Model-specific settings
+models:
+  claude:
+    model_id: claude-sonnet-4-20250514
+    max_tokens: 4096
+  
+  gpt:
+    model_id: gpt-4o
+    max_tokens: 4096
+  
+  bedrock:
+    model_id: anthropic.claude-3-sonnet-20240229-v1:0
+    region: us-east-1
+    max_tokens: 4096
+
+# Agent settings
+agent:
+  max_iterations: 50
+  timeout_seconds: 300
+
+# Audit settings
+audit:
+  enabled: true
+  log_directory: ~/.mdxcode/audit
+  retention_days: 90
+
+# Security agent settings
+security:
+  scan_extensions:
+    - .py
+    - .js
+    - .ts
+    - .java
+    - .go
+    - .rb
+    - .php
+  
+  # Additional patterns to always block
+  custom_blocked_patterns: []
+  
+  # Additional patterns requiring approval
+  custom_approval_patterns: []
