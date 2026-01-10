@@ -37,14 +37,20 @@ MDx Code is that tool.
 
 ## Quick Start
 
+**Option 1: Install directly from GitHub (recommended)**
 ```bash
-# Clone the repo
+pip install git+https://github.com/dhotherm/mdx-code.git
+```
+
+**Option 2: Clone and install locally**
+```bash
 git clone https://github.com/dhotherm/mdx-code.git
 cd mdx-code
-
-# Install (creates the 'mdxcode' command)
 pip install -e .
+```
 
+**Then authenticate and run:**
+```bash
 # Authenticate with Claude
 mdxcode auth claude
 
@@ -53,13 +59,7 @@ cd your-project
 mdxcode init
 
 # Run it
-mdxcode "Fix the bug in auth.py"
-```
-
-Or install directly from GitHub:
-
-```bash
-pip install git+https://github.com/dhotherm/mdx-code.git
+mdxcode main "Fix the bug in auth.py"
 ```
 
 ---

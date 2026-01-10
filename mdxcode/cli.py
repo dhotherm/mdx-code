@@ -36,19 +36,47 @@ app = typer.Typer(
 
 console = Console()
 
+# Version
+__version__ = "0.1.0"
+
+
+def version_callback(value: bool):
+    """Show version and exit."""
+    if value:
+        console.print(f"[bold cyan]MDx Code[/bold cyan] v{__version__}")
+        raise typer.Exit()
+
+
+# ASCII art banner - MDx CODE with style
+BANNER_ART = """
+[bold cyan]
+ ███╗   ███╗[/bold cyan][cyan]██████╗[/cyan] [dim cyan]x[/dim cyan]   [bold white]██████╗ ██████╗ ██████╗ ███████╗[/bold white]
+[bold cyan] ████╗ ████║[/bold cyan][cyan]██╔══██╗[/cyan]     [bold white]██╔════╝██╔═══██╗██╔══██╗██╔════╝[/bold white]
+[bold cyan] ██╔████╔██║[/bold cyan][cyan]██║  ██║[/cyan]     [bold white]██║     ██║   ██║██║  ██║█████╗[/bold white]
+[bold cyan] ██║╚██╔╝██║[/bold cyan][cyan]██║  ██║[/cyan]     [bold white]██║     ██║   ██║██║  ██║██╔══╝[/bold white]
+[bold cyan] ██║ ╚═╝ ██║[/bold cyan][cyan]██████╔╝[/cyan]     [bold white]╚██████╗╚██████╔╝██████╔╝███████╗[/bold white]
+[bold cyan] ╚═╝     ╚═╝[/bold cyan][cyan]╚═════╝[/cyan]      [bold white]╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝[/bold white]
+"""
+
 
 def show_banner():
     """Show the MDx Code banner. First impressions matter."""
-    banner = Text()
-    banner.append("MDx Code\n", style="bold cyan")
-    banner.append("AI-Native Engineering Companion\n\n", style="dim")
-    banner.append("Built for builders. Designed for regulated environments.\n", style="italic")
+    from rich.markup import escape
     
-    console.print(Panel(
-        banner,
-        border_style="cyan",
-        padding=(1, 2),
-    ))
+    console.print(BANNER_ART)
+    console.print(f"  [dim]v{__version__}[/dim]  [italic]Built for builders. Designed for regulated environments.[/italic]\n")
+    console.print("  [bold green]Yoooooo! Let's ship some code.[/bold green] 🚀\n")
+
+
+@app.callback(invoke_without_command=True)
+def app_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", "-V", help="Show version and exit.", callback=version_callback, is_eager=True),
+):
+    """MDx Code - AI-Native Engineering Companion."""
+    if ctx.invoked_subcommand is None:
+        show_banner()
+        console.print("Run [bold]mdxcode --help[/bold] for usage.\n")
 
 
 @app.command()
