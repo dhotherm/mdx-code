@@ -1,7 +1,6 @@
 """Consensus engine: compare findings across backends to detect agreement."""
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .normalizer import Finding
 

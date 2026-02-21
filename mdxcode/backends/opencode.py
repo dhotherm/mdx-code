@@ -4,7 +4,7 @@ import asyncio
 import shutil
 import time
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 from .base import Backend, BackendInfo, HealthStatus, TaskResult
 

@@ -20,10 +20,19 @@ It wraps them with orchestration. Don't create tools or agent loops.
 
 ## Commands
 - `mdx "task"` — Execute via best backend
-- `mdx review src/` — Adversarial review (Session 4)
-- `mdx cost` — Spending dashboard (Session 3)
+- `mdx review src/` — Adversarial review
+- `mdx review --last` — Review last change
+- `mdx cost` — Spending dashboard
 - `mdx audit` — Audit history
 - `mdx setup` — Show available backends
+- `mdx status` — Backend health
+- `mdx policy` — View active policies
+- `mdx policy init` — Create starter .mdxpolicy
+- `mdx policy check <files>` — Check files against policies
+- `mdx compliance` — Regulatory compliance matrix
+- `mdx hook install` — Git pre-commit hook
+- `mdx mcp status` — MCP server availability
+- `mdx mcp config` — Generate MCP client config
 
 ## Git Workflow
 - Work on `v2-dev` branch

@@ -79,11 +79,11 @@ class ClaudeBackend(Backend):
         """
         Execute a task via Claude Code and stream output.
 
-        Spawns: claude -p "task" --output-format json
+        Spawns: claude -p "task"
         Streams stdout line-by-line as it arrives.
         """
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task, "--output-format", "json",
+            self.cli_command, "-p", task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),

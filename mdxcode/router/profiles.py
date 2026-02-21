@@ -1,6 +1,6 @@
 """Backend capability profiles for routing decisions."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

@@ -3,7 +3,6 @@
 from typing import Optional
 
 from rich.console import Console
-from rich.text import Text
 
 console = Console()
 
@@ -24,6 +23,7 @@ def show_footer(
     savings: float = 0.0,
     savings_vs: str = "",
     selection_reason: Optional[str] = None,
+    has_file_changes: bool = False,
 ) -> None:
     """Display the MDx Code footer after task completion."""
     width = min(console.width, 52)
@@ -53,13 +53,14 @@ def show_footer(
             cost_str += f" (saved ${savings:.2f} vs {savings_vs.title()})"
         console.print(cost_str)
 
-    # Audit line
+    # Audit line (merge with review hint when there are file changes)
     session_short = session_id[:8] if len(session_id) >= 8 else session_id
-    console.print(f"  [green]\u2713[/green] Audit logged (session {session_short}...)")
-
-    # Review hint
-    console.print(
-        "  [yellow]\u26a1[/yellow] Quick review available: [bold]mdx review --last[/bold]"
-    )
+    if has_file_changes:
+        console.print(
+            f"  [green]\u2713[/green] Audit: {session_short}... "
+            f"\u2192 [bold]mdx review --last[/bold]"
+        )
+    else:
+        console.print(f"  [green]\u2713[/green] Audit logged (session {session_short}...)")
 
     console.print(f"[dim]{separator}[/dim]")

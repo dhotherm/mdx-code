@@ -1,6 +1,5 @@
 """Auto-discover installed AI coding CLI backends."""
 
-import shutil
 from typing import Optional
 
 from .base import Backend, BackendInfo
@@ -31,7 +30,7 @@ KNOWN_CLIS = {
 INSTALL_INSTRUCTIONS = {
     "claude": "Install: npm install -g @anthropic-ai/claude-code",
     "codex": "Install: npm install -g @openai/codex",
-    "gemini": "Install: npm install -g @anthropic-ai/gemini-cli  (or see Google's docs)",
+    "gemini": "Install: npm install -g @google/gemini-cli  (see https://github.com/google-gemini/gemini-cli)",
     "opencode": "Install: go install github.com/opencode-ai/opencode@latest",
 }
 

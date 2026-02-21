@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from .consensus import ConfirmedFinding, ConflictFinding, ConsensusResult, UniqueFinding
+from .consensus import ConfirmedFinding, ConflictFinding, UniqueFinding
 from .normalizer import Finding
 from .orchestrator import AdversarialReviewResult
 

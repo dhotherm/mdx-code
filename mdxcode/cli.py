@@ -12,58 +12,12 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from . import __version__
-from .backends.circuit_breaker import get_circuit_breaker
-from .backends.discovery import (
-    BACKEND_CLASSES,
-    INSTALL_INSTRUCTIONS,
-    KNOWN_CLIS,
-    discover_backends,
-    get_best_backend,
-)
 from .config import MDX_DIR, load_config
-from .governance.audit_trail import (
-    AuditEntry,
-    compute_audit_stats,
-    export_entries_csv,
-    read_filtered_entries,
-    read_recent_entries,
-    verify_audit_integrity,
-    write_audit_entry,
-)
-from .governance.compliance import get_compliance_matrix
-from .governance.policy_engine import (
-    STARTER_POLICY,
-    evaluate_policies,
-    load_policy_file,
-)
-from .output.footer import show_footer
-from .output.streamer import stream_output
-from .review.orchestrator import (
-    AdversarialReviewResult,
-    prepare_target_from_diff,
-    prepare_target_from_paths,
-    run_review,
-)
-from .review.renderer import render_review
-from .router.cost_tracker import (
-    get_cost_by_backend,
-    get_date_range_for_period,
-    get_savings,
-    get_top_tasks,
-    get_total_cost,
-    query_costs,
-    record_cost,
-)
-from .router.engine import categorize_task
-from .router.profiles import (
-    estimate_cost,
-    estimate_tokens_from_chars,
-    get_profiles,
-)
-from .router.strategies import route_task
+
+# All other imports (backends, router, review, governance) are lazy —
+# imported inside the functions that use them for fast startup.
 
 LAST_TASK_PATH = MDX_DIR / "last_task.json"
 
@@ -110,6 +64,8 @@ def _show_routing_line(
     user_specified: bool = False,
 ) -> None:
     """Show a one-line routing decision."""
+    from .backends.discovery import KNOWN_CLIS
+
     display_name = KNOWN_CLIS.get(backend_name, backend_name.title())
     if user_specified:
         console.print(f"  [dim]\u2192 Using {display_name} (user specified)[/dim]")
@@ -151,6 +107,8 @@ def main(
         raise typer.Exit()
 
     # No task, no subcommand — interactive mode
+    from .backends.discovery import discover_backends
+
     backends = asyncio.run(discover_backends())
     show_banner(backends)
 
@@ -171,6 +129,17 @@ async def _execute_task(
     strategy_override: Optional[str] = None,
 ) -> None:
     """Execute a task via the best available backend."""
+    from .backends.circuit_breaker import get_circuit_breaker
+    from .backends.discovery import INSTALL_INSTRUCTIONS, discover_backends, get_best_backend
+    from .governance.audit_trail import AuditEntry, write_audit_entry
+    from .governance.policy_engine import evaluate_policies, load_policy_file
+    from .output.footer import show_footer
+    from .output.streamer import stream_output
+    from .router.cost_tracker import record_cost
+    from .router.engine import categorize_task
+    from .router.profiles import estimate_cost, estimate_tokens_from_chars, get_profiles
+    from .router.strategies import route_task
+
     config = load_config()
     session_id = str(uuid.uuid4())
 
@@ -221,7 +190,7 @@ async def _execute_task(
             install_hint = INSTALL_INSTRUCTIONS.get(backend_override, "")
             if backend_override == "opencode":
                 console.print(
-                    f"[red]OpenCode does not support non-interactive execution.[/red]"
+                    "[red]OpenCode does not support non-interactive execution.[/red]"
                 )
                 console.print("Use --backend claude, --backend codex, or --backend gemini.")
             else:
@@ -340,11 +309,14 @@ async def _execute_task(
     # Save last task info for `mdx review --last`
     _save_last_task(task, backend.name, cwd)
 
+    # Check if there were file changes (for footer display)
+    last_task_data = _load_last_task()
+    has_file_changes = bool(last_task_data and last_task_data.get("files_modified"))
+
     # Policy enforcement (warn only, never block)
     try:
         policy_file = load_policy_file()
         if policy_file:
-            last_task_data = _load_last_task()
             modified = last_task_data.get("files_modified", []) if last_task_data else []
             if modified:
                 policy_result = evaluate_policies(policy_file, modified)
@@ -395,12 +367,15 @@ async def _execute_task(
             savings=savings,
             savings_vs=savings_vs,
             selection_reason=selection_reason,
+            has_file_changes=has_file_changes,
         )
 
 
 @app.command()
 def setup() -> None:
     """Detect and display available backends."""
+    from .backends.discovery import KNOWN_CLIS, discover_backends
+
     backends = asyncio.run(discover_backends())
 
     console.print()
@@ -448,6 +423,9 @@ def setup() -> None:
 @app.command()
 def status() -> None:
     """Show backend health and circuit breaker status."""
+    from .backends.circuit_breaker import get_circuit_breaker
+    from .backends.discovery import BACKEND_CLASSES, KNOWN_CLIS, discover_backends
+
     backends = asyncio.run(discover_backends())
     health_results = asyncio.run(_run_health_checks())
 
@@ -484,7 +462,7 @@ def status() -> None:
 
 async def _run_health_checks() -> dict:
     """Run health checks on all backends."""
-    from .backends.base import HealthStatus
+    from .backends.discovery import BACKEND_CLASSES
 
     results = {}
     for backend_cls in BACKEND_CLASSES:
@@ -501,6 +479,14 @@ def cost(
     since: Optional[str] = typer.Option(None, "--since", help="Custom start date (YYYY-MM-DD)"),
 ) -> None:
     """Show spending dashboard."""
+    from .router.cost_tracker import (
+        get_cost_by_backend,
+        get_date_range_for_period,
+        get_savings,
+        get_top_tasks,
+        get_total_cost,
+    )
+
     # Determine date range
     if since:
         try:
@@ -522,7 +508,7 @@ def cost(
 
     total = get_total_cost(since=since_dt, until=until_dt)
     by_backend = get_cost_by_backend(since=since_dt, until=until_dt)
-    savings = get_savings(since=since_dt, until=until_dt)
+    savings_val = get_savings(since=since_dt, until=until_dt)
     top = get_top_tasks(since=since_dt, until=until_dt, limit=5)
 
     # Build display
@@ -543,9 +529,9 @@ def cost(
             )
         lines.append("")
 
-    if savings > 0:
+    if savings_val > 0:
         lines.append(
-            f"  Smart routing saved: [green]${savings:.2f}[/green] {period_label.lower()}"
+            f"  Smart routing saved: [green]${savings_val:.2f}[/green] {period_label.lower()}"
         )
         lines.append("  [dim](vs. using most expensive option every time)[/dim]")
         lines.append("")
@@ -556,7 +542,6 @@ def cost(
             summary = entry.get("task_summary", "?")
             if len(summary) > 35:
                 summary = summary[:32] + "..."
-            ts = entry.get("timestamp", "")[:10]
             c = entry.get("cost_usd", 0) or 0
             lines.append(f"    {summary:<38} ${c:.2f}")
         lines.append("")
@@ -588,6 +573,14 @@ def audit(
     stats: bool = typer.Option(False, "--stats", help="Show audit statistics"),
 ) -> None:
     """Show recent audit entries with filtering, export, and verification."""
+    from .governance.audit_trail import (
+        compute_audit_stats,
+        export_entries_csv,
+        read_filtered_entries,
+        read_recent_entries,
+        verify_audit_integrity,
+    )
+
     config = load_config()
     audit_dir = Path(config.audit.directory).expanduser()
 
@@ -663,8 +656,7 @@ def audit(
             csv_text = export_entries_csv(entries)
             console.print(csv_text, end="")
         elif export.lower() == "json":
-            import json as json_mod
-            console.print(json_mod.dumps(entries, indent=2, default=str))
+            console.print(json.dumps(entries, indent=2, default=str))
         else:
             console.print(f"[red]Unknown export format: {export}. Use 'csv' or 'json'.[/red]")
         return
@@ -799,6 +791,11 @@ async def _run_review(
     format: str,
 ) -> None:
     """Execute the adversarial review."""
+    from .governance.audit_trail import AuditEntry, write_audit_entry
+    from .governance.policy_engine import evaluate_policies, load_policy_file
+    from .review.orchestrator import prepare_target_from_diff, prepare_target_from_paths, run_review
+    from .review.renderer import render_review
+
     # Parse backend list
     backend_names: Optional[list[str]] = None
     if backends_str:
@@ -917,6 +914,8 @@ def policy_default(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
 
+    from .governance.policy_engine import load_policy_file
+
     policy_file = load_policy_file()
     if policy_file is None:
         console.print("[dim]No .mdxpolicy file found.[/dim]")
@@ -971,6 +970,8 @@ def policy_check(
     files: list[str] = typer.Argument(..., help="Files to check against policies"),
 ) -> None:
     """Check files against active policies."""
+    from .governance.policy_engine import _match_path, evaluate_policies, load_policy_file
+
     policy_file = load_policy_file()
     if policy_file is None:
         console.print("[dim]No .mdxpolicy file found. Run mdx policy init to create one.[/dim]")
@@ -996,8 +997,6 @@ def policy_check(
         matched: list[str] = []
         for policy in policy_file.policies:
             for pattern in policy.paths:
-                from .governance.policy_engine import _match_path
-
                 if _match_path(filepath, pattern):
                     matched.append(policy.name)
                     break
@@ -1011,6 +1010,8 @@ def policy_check(
 @policy_app.command("init")
 def policy_init() -> None:
     """Create a starter .mdxpolicy file in the current directory."""
+    from .governance.policy_engine import STARTER_POLICY
+
     target = Path.cwd() / ".mdxpolicy"
     if target.exists():
         console.print(f"[yellow].mdxpolicy already exists at {target}[/yellow]")
@@ -1027,6 +1028,8 @@ def policy_init() -> None:
 @app.command()
 def compliance() -> None:
     """Show regulatory compliance mapping matrix."""
+    from .governance.compliance import get_compliance_matrix
+
     matrix = get_compliance_matrix()
 
     for framework, features in matrix.items():
@@ -1127,6 +1130,8 @@ def hook_status() -> None:
 @hook_app.command("check", hidden=True)
 def hook_check() -> None:
     """Check staged files against policies (used by git hook)."""
+    from .governance.policy_engine import evaluate_policies, load_policy_file
+
     # Get staged file list
     try:
         result = subprocess.run(
@@ -1236,69 +1241,56 @@ def mcp_config(
     ),
 ) -> None:
     """Generate MCP server configuration for your client."""
+    servers_config = {
+        "mdx-governance": {
+            "command": "mdx-governance-server",
+            "args": [],
+        },
+        "mdx-audit": {
+            "command": "mdx-audit-server",
+            "args": [],
+        },
+        "mdx-cost": {
+            "command": "mdx-cost-server",
+            "args": [],
+        },
+    }
+
     console.print()
 
     if client == "claude-code":
-        config = {
-            "mcpServers": {
-                "mdx-governance": {
-                    "command": "mdx-governance-server",
-                    "args": [],
-                },
-                "mdx-audit": {
-                    "command": "mdx-audit-server",
-                    "args": [],
-                },
-                "mdx-cost": {
-                    "command": "mdx-cost-server",
-                    "args": [],
-                },
-            }
-        }
-        console.print("  [bold]Claude Code[/bold] \u2014 add to [dim]~/.claude.json[/dim]:")
+        config = {"mcpServers": servers_config}
+        console.print("  [bold]Claude Code[/bold] MCP Configuration")
+        console.print()
+        console.print("  Add to [bold]~/.claude.json[/bold] (global) or")
+        console.print("  [bold].claude/settings.json[/bold] (project-level):")
         console.print()
         console.print(json.dumps(config, indent=2))
+        console.print()
+        console.print("  [dim]The mcpServers key merges with your existing config.[/dim]")
 
     elif client == "cursor":
-        config = {
-            "mcpServers": {
-                "mdx-governance": {
-                    "command": "mdx-governance-server",
-                    "args": [],
-                },
-                "mdx-audit": {
-                    "command": "mdx-audit-server",
-                    "args": [],
-                },
-                "mdx-cost": {
-                    "command": "mdx-cost-server",
-                    "args": [],
-                },
-            }
-        }
-        console.print("  [bold]Cursor[/bold] \u2014 add to [dim].cursor/mcp.json[/dim]:")
+        config = {"mcpServers": servers_config}
+        console.print("  [bold]Cursor[/bold] MCP Configuration")
+        console.print()
+        console.print("  Create or edit [bold].cursor/mcp.json[/bold] in your project root:")
         console.print()
         console.print(json.dumps(config, indent=2))
+        console.print()
+        console.print("  [dim]Restart Cursor after editing to pick up MCP servers.[/dim]")
 
     elif client == "codex":
-        config = {
-            "mcpServers": {
-                "mdx-governance": {
-                    "command": "mdx-governance-server",
-                    "args": [],
-                },
-                "mdx-audit": {
-                    "command": "mdx-audit-server",
-                    "args": [],
-                },
-                "mdx-cost": {
-                    "command": "mdx-cost-server",
-                    "args": [],
-                },
-            }
-        }
-        console.print("  [bold]Codex CLI[/bold] \u2014 add to [dim]codex config[/dim]:")
+        console.print("  [bold]Codex CLI[/bold] MCP Configuration")
         console.print()
+        console.print("  Add to [bold]~/.codex/config.json[/bold] or pass via CLI flags:")
+        console.print()
+        console.print("  codex --mcp-server mdx-governance-server \\")
+        console.print("        --mcp-server mdx-audit-server \\")
+        console.print("        --mcp-server mdx-cost-server")
+        console.print()
+        console.print("  Or in config.json:")
+        console.print()
+        config = {"mcpServers": servers_config}
         console.print(json.dumps(config, indent=2))
 
     else:
