@@ -5,11 +5,10 @@ import sys
 import time
 from typing import AsyncIterator
 
-from rich.console import Console
 from rich.markdown import Markdown
 from rich.spinner import Spinner
 
-console = Console()
+from . import console
 
 # Markers that suggest content is markdown
 _MD_MARKERS = ("**", "##", "```", "- ", "* ", "1. ", "> ", "[", "| ")

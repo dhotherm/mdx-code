@@ -10,7 +10,7 @@ from mdxcode.backends.claude import ClaudeBackend
 from mdxcode.backends.codex import CodexBackend
 from mdxcode.backends.gemini import GeminiBackend
 from mdxcode.backends.opencode import OpenCodeBackend
-from mdxcode.backends.discovery import discover_backends, get_best_backend
+from mdxcode.backends.discovery import discover_backends, get_best_backend, invalidate_discovery_cache
 
 
 class TestClaudeBackend:
@@ -102,7 +102,7 @@ class TestDiscovery:
                 return_value=self._make_info("opencode", healthy=False),
             ),
         ):
-            backends = await discover_backends()
+            backends = await discover_backends(force=True)
             claude_backends = [b for b in backends if b.name == "claude"]
             assert len(claude_backends) == 1
             assert claude_backends[0].healthy is True
@@ -127,7 +127,7 @@ class TestDiscovery:
                 return_value=self._make_info("opencode", healthy=False),
             ),
         ):
-            backends = await discover_backends()
+            backends = await discover_backends(force=True)
             names = [b.name for b in backends]
             assert "claude" in names
             assert "codex" in names
@@ -154,7 +154,7 @@ class TestDiscovery:
                 return_value=self._make_info("opencode", healthy=False),
             ),
         ):
-            backends = await discover_backends()
+            backends = await discover_backends(force=True)
             assert all(not b.healthy for b in backends)
 
 

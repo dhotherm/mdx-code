@@ -65,47 +65,56 @@ class TestProjectContext:
         second = _get_project_context()
         assert second == "cached_value"
 
-    @patch("subprocess.run")
-    def test_handles_git_failure_gracefully(self, mock_run):
-        mock_run.side_effect = FileNotFoundError("git not found")
+    @patch("subprocess.Popen")
+    def test_handles_git_failure_gracefully(self, mock_popen):
+        mock_popen.side_effect = FileNotFoundError("git not found")
         result = _get_project_context()
         assert isinstance(result, str)
 
-    @patch("subprocess.run")
-    def test_handles_timeout_gracefully(self, mock_run):
-        mock_run.side_effect = subprocess.TimeoutExpired("git", 5)
+    @patch("subprocess.Popen")
+    def test_handles_timeout_gracefully(self, mock_popen):
+        proc = MagicMock()
+        # First communicate(timeout=5) raises, second communicate() (cleanup) returns empty
+        proc.communicate.side_effect = [
+            subprocess.TimeoutExpired("git", 5),
+            ("", ""),
+            subprocess.TimeoutExpired("git", 5),
+            ("", ""),
+        ]
+        proc.kill = MagicMock()
+        mock_popen.return_value = proc
         result = _get_project_context()
         assert isinstance(result, str)
 
-    @patch("subprocess.run")
-    def test_parses_branch_and_language(self, mock_run):
-        def side_effect(cmd, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
+    @patch("subprocess.Popen")
+    def test_parses_branch_and_language(self, mock_popen):
+        def make_proc(cmd, **kwargs):
+            proc = MagicMock()
+            proc.returncode = 0
             if "branch" in cmd:
-                result.stdout = "main\n"
+                proc.communicate.return_value = ("main\n", "")
             elif "ls-files" in cmd:
-                result.stdout = "app.py\nlib.py\nutils.py\nREADME.md\n"
-            return result
+                proc.communicate.return_value = ("app.py\nlib.py\nutils.py\nREADME.md\n", "")
+            return proc
 
-        mock_run.side_effect = side_effect
+        mock_popen.side_effect = make_proc
         result = _get_project_context()
         assert "main" in result
         assert "Python" in result
         assert "4 files" in result
 
-    @patch("subprocess.run")
-    def test_detects_typescript(self, mock_run):
-        def side_effect(cmd, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
+    @patch("subprocess.Popen")
+    def test_detects_typescript(self, mock_popen):
+        def make_proc(cmd, **kwargs):
+            proc = MagicMock()
+            proc.returncode = 0
             if "branch" in cmd:
-                result.stdout = "develop\n"
+                proc.communicate.return_value = ("develop\n", "")
             elif "ls-files" in cmd:
-                result.stdout = "src/index.ts\nsrc/app.tsx\npackage.json\n"
-            return result
+                proc.communicate.return_value = ("src/index.ts\nsrc/app.tsx\npackage.json\n", "")
+            return proc
 
-        mock_run.side_effect = side_effect
+        mock_popen.side_effect = make_proc
         result = _get_project_context()
         assert "TypeScript" in result
 
@@ -635,7 +644,7 @@ class TestSummaryCommand:
     """Tests for the summary command."""
 
     @patch("mdxcode.cli.console")
-    @patch("mdxcode.cli.load_config")
+    @patch("mdxcode.config.load_config")
     @patch("mdxcode.governance.audit_trail.read_filtered_entries")
     @patch("mdxcode.router.cost_tracker.get_total_cost", return_value=0.05)
     @patch("mdxcode.router.cost_tracker.get_savings", return_value=0.01)
@@ -677,7 +686,7 @@ class TestSummaryCommand:
         assert any("Tasks completed" in c for c in calls)
 
     @patch("mdxcode.cli.console")
-    @patch("mdxcode.cli.load_config")
+    @patch("mdxcode.config.load_config")
     @patch("mdxcode.governance.audit_trail.read_filtered_entries")
     @patch("mdxcode.router.cost_tracker.get_total_cost", return_value=0.0)
     @patch("mdxcode.router.cost_tracker.get_savings", return_value=0.0)

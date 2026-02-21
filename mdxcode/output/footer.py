@@ -3,11 +3,8 @@
 import sys
 from typing import Optional
 
-from rich.console import Console
-
+from . import console
 from .colors import colored_backend
-
-console = Console()
 
 REASON_LABELS = {
     "user_specified": "user selected",

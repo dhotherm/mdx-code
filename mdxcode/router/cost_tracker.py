@@ -38,11 +38,18 @@ CREATE INDEX IF NOT EXISTS idx_costs_session ON costs(session_id);
 
 
 def _get_db(db_path: Optional[Path] = None) -> sqlite3.Connection:
-    """Get a database connection, creating the table if needed."""
+    """Get a database connection, creating the table if needed.
+
+    Uses WAL journal mode for better concurrent read/write performance
+    and NORMAL synchronous mode (faster than FULL, still safe for cost tracking).
+    """
     path = db_path or DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
+    # Performance pragmas
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute(CREATE_TABLE_SQL)
     for stmt in CREATE_INDEX_SQL.strip().split(";"):
         stmt = stmt.strip()

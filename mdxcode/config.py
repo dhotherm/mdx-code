@@ -77,27 +77,44 @@ def ensure_mdx_dir() -> Path:
     return MDX_DIR
 
 
+# Module-level cache — avoids re-parsing YAML + Pydantic on every call
+_cached_config: Optional[MdxConfig] = None
+
+
 def load_config(path: Optional[Path] = None) -> MdxConfig:
-    """Load config from file, creating with defaults if it doesn't exist."""
+    """Load config from file, creating with defaults if it doesn't exist.
+
+    Cached for the process lifetime when using the default path.
+    """
+    global _cached_config
+    if path is None and _cached_config is not None:
+        return _cached_config
+
     config_path = path or CONFIG_PATH
 
     if config_path.exists():
         raw = yaml.safe_load(config_path.read_text()) or {}
-        return MdxConfig(**raw)
+        config = MdxConfig(**raw)
+    else:
+        # First run — create default config
+        ensure_mdx_dir()
+        config = MdxConfig()
+        save_config(config, config_path)
 
-    # First run — create default config
-    ensure_mdx_dir()
-    config = MdxConfig()
-    save_config(config, config_path)
+    if path is None:
+        _cached_config = config
     return config
 
 
 def save_config(config: MdxConfig, path: Optional[Path] = None) -> None:
-    """Save config to YAML file."""
+    """Save config to YAML file. Also updates the cache."""
+    global _cached_config
     config_path = path or CONFIG_PATH
     config_path.parent.mkdir(parents=True, exist_ok=True)
     data = config.model_dump()
     config_path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
+    if path is None:
+        _cached_config = config
 
 
 def load_project_config() -> Optional[ProjectConfig]:

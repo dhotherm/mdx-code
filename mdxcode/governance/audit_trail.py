@@ -52,21 +52,59 @@ def compute_chain_hash(entry_dict: dict, previous_hash: str) -> str:
 
 
 def get_last_hash(audit_dir: Path) -> str:
-    """Get the chain hash of the most recent audit entry, or 'genesis'."""
-    today_file = audit_dir / f"{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.jsonl"
-    if not today_file.exists():
+    """Get the chain hash of the most recent audit entry, or 'genesis'.
+
+    Optimized: seeks from end of file instead of reading entire file.
+    O(1) instead of O(n) for the last entry.
+    """
+    target_file = audit_dir / f"{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.jsonl"
+    if not target_file.exists():
         # Check previous days' files
         jsonl_files = sorted(audit_dir.glob("*.jsonl"))
         if not jsonl_files:
             return "genesis"
-        today_file = jsonl_files[-1]
+        target_file = jsonl_files[-1]
 
-    lines = today_file.read_text().strip().splitlines()
-    if not lines:
+    if not target_file.exists() or target_file.stat().st_size == 0:
         return "genesis"
 
-    last_entry = json.loads(lines[-1])
-    return last_entry.get("chain_hash", "genesis")
+    # Read last line by seeking backwards from end of file
+    try:
+        with open(target_file, "rb") as f:
+            # Seek to end and skip trailing newline(s)
+            f.seek(0, 2)
+            file_size = f.tell()
+            if file_size == 0:
+                return "genesis"
+
+            pos = file_size - 1
+            # Skip trailing newlines
+            while pos > 0:
+                f.seek(pos)
+                if f.read(1) != b"\n":
+                    break
+                pos -= 1
+
+            # Now walk backwards to find the preceding newline
+            while pos > 0:
+                pos -= 1
+                f.seek(pos)
+                if f.read(1) == b"\n":
+                    # pos points to newline, readline() starts after it
+                    last_line = f.readline().decode("utf-8").strip()
+                    break
+            else:
+                # No newline found — file has only one line
+                f.seek(0)
+                last_line = f.readline().decode("utf-8").strip()
+
+        if not last_line:
+            return "genesis"
+
+        entry = json.loads(last_line)
+        return entry.get("chain_hash", "genesis")
+    except (json.JSONDecodeError, OSError):
+        return "genesis"
 
 
 def write_audit_entry(entry: AuditEntry, audit_dir: Optional[Path] = None) -> Path:

@@ -12,12 +12,10 @@ from typing import Optional
 
 import click
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
 from . import __version__
-from .config import MDX_DIR, load_config, save_config
+from .config import MDX_DIR
+from .output import console
 
 # All other imports (backends, router, review, governance) are lazy —
 # imported inside the functions that use them for fast startup.
@@ -26,8 +24,6 @@ LAST_TASK_PATH = MDX_DIR / "last_task.json"
 
 # Check NO_COLOR standard (https://no-color.org)
 NO_COLOR = os.environ.get("NO_COLOR") is not None
-
-console = Console(no_color=NO_COLOR)
 
 # Shared task category icons — used in routing line, history, audit, summary
 CATEGORY_ICONS: dict[str, str] = {
@@ -46,61 +42,88 @@ _project_context_cache: str | None = None
 
 
 def _get_project_context() -> str:
-    """Detect project context: git branch, primary language, file count."""
+    """Detect project context: git branch, primary language, file count.
+
+    Runs both git commands in parallel using Popen for ~20ms savings.
+    """
     global _project_context_cache
     if _project_context_cache is not None:
         return _project_context_cache
 
     parts: list[str] = []
 
-    # Git branch
+    # Launch both git commands in parallel
+    branch_proc = None
+    files_proc = None
     try:
-        result = subprocess.run(
+        branch_proc = subprocess.Popen(
             ["git", "branch", "--show-current"],
-            capture_output=True, text=True, timeout=5,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            parts.append(result.stdout.strip())
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError):
         pass
 
-    # Primary language and file count (from git ls-files)
     try:
-        result = subprocess.run(
+        files_proc = subprocess.Popen(
             ["git", "ls-files"],
-            capture_output=True, text=True, timeout=5,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
-        if result.returncode == 0:
-            files = result.stdout.strip().splitlines()
-
-            ext_count: dict[str, int] = {}
-            for f in files:
-                ext = Path(f).suffix.lower()
-                if ext:
-                    ext_count[ext] = ext_count.get(ext, 0) + 1
-
-            EXT_TO_LANG = {
-                ".py": "Python", ".ts": "TypeScript", ".tsx": "TypeScript",
-                ".js": "JavaScript", ".jsx": "JavaScript", ".go": "Go",
-                ".rs": "Rust", ".java": "Java", ".kt": "Kotlin",
-                ".rb": "Ruby", ".swift": "Swift", ".cs": "C#",
-                ".cpp": "C++", ".c": "C", ".php": "PHP",
-            }
-
-            lang_count: dict[str, int] = {}
-            for ext, count in ext_count.items():
-                lang = EXT_TO_LANG.get(ext)
-                if lang:
-                    lang_count[lang] = lang_count.get(lang, 0) + count
-
-            if lang_count:
-                primary = max(lang_count, key=lang_count.get)  # type: ignore[arg-type]
-                parts.append(primary)
-
-            if files:
-                parts.append(f"{len(files)} files")
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError):
         pass
+
+    # Collect results
+    branch = ""
+    if branch_proc:
+        try:
+            stdout, _ = branch_proc.communicate(timeout=5)
+            if branch_proc.returncode == 0 and stdout.strip():
+                branch = stdout.strip()
+        except (subprocess.TimeoutExpired, OSError):
+            branch_proc.kill()
+            branch_proc.communicate()
+
+    files_output = ""
+    if files_proc:
+        try:
+            stdout, _ = files_proc.communicate(timeout=5)
+            if files_proc.returncode == 0:
+                files_output = stdout.strip()
+        except (subprocess.TimeoutExpired, OSError):
+            files_proc.kill()
+            files_proc.communicate()
+
+    if branch:
+        parts.append(branch)
+
+    if files_output:
+        files = files_output.splitlines()
+
+        EXT_TO_LANG = {
+            ".py": "Python", ".ts": "TypeScript", ".tsx": "TypeScript",
+            ".js": "JavaScript", ".jsx": "JavaScript", ".go": "Go",
+            ".rs": "Rust", ".java": "Java", ".kt": "Kotlin",
+            ".rb": "Ruby", ".swift": "Swift", ".cs": "C#",
+            ".cpp": "C++", ".c": "C", ".php": "PHP",
+        }
+
+        ext_count: dict[str, int] = {}
+        for f in files:
+            ext = Path(f).suffix.lower()
+            if ext:
+                ext_count[ext] = ext_count.get(ext, 0) + 1
+
+        lang_count: dict[str, int] = {}
+        for ext, count in ext_count.items():
+            lang = EXT_TO_LANG.get(ext)
+            if lang:
+                lang_count[lang] = lang_count.get(lang, 0) + count
+
+        if lang_count:
+            primary = max(lang_count, key=lang_count.get)  # type: ignore[arg-type]
+            parts.append(primary)
+
+        if files:
+            parts.append(f"{len(files)} files")
 
     _project_context_cache = " \u00b7 ".join(parts)
     return _project_context_cache
@@ -173,6 +196,7 @@ def show_banner(backends: Optional[list] = None) -> None:
 
 def show_personalized_banner() -> None:
     """Show a personalized banner for returning users (5+ tasks)."""
+    from .config import load_config
     from .router.cost_tracker import get_date_range_for_period, get_total_cost
 
     config = load_config()
@@ -259,6 +283,7 @@ def show_personalized_banner() -> None:
 async def _run_first_time_setup() -> None:
     """Interactive first-run setup wizard."""
     from .backends.discovery import KNOWN_CLIS, discover_backends
+    from .config import load_config, save_config
 
     console.print()
     console.print("  [bold]Welcome to MDx Code[/bold] — The AI Engineering Manager")
@@ -394,6 +419,8 @@ def main(
 
     # If no subcommand is being invoked, show banner + interactive prompt
     if ctx.invoked_subcommand is None:
+        from .config import load_config
+
         config = load_config()
 
         # First-run wizard
@@ -463,7 +490,7 @@ async def _execute_task(
     """Execute a task via the best available backend."""
     from .backends.circuit_breaker import get_circuit_breaker
     from .backends.discovery import INSTALL_INSTRUCTIONS, discover_backends, get_best_backend
-    from .config import load_project_config
+    from .config import load_config, load_project_config, save_config
     from .governance.audit_trail import AuditEntry, write_audit_entry
     from .governance.policy_engine import evaluate_policies, load_policy_file
     from .output.footer import show_footer
@@ -714,6 +741,54 @@ async def _execute_task(
             savings = round(max_alt_cost - cost, 4)
             savings_vs = max_alt_name
 
+    # Save last task info for `mdx review --last` (needed before footer for file changes)
+    _save_last_task(task, backend.name, cwd, full_output)
+
+    # Check if there were file changes (for footer display)
+    last_task_data = _load_last_task()
+    has_file_changes = bool(last_task_data and last_task_data.get("files_modified"))
+
+    # Timing intelligence (Feature 8)
+    timing_insight = None
+    try:
+        from .governance.audit_trail import get_average_duration
+
+        avg = get_average_duration(backend=backend.name, task_category=category.category)
+        if avg and avg > 0:
+            diff_pct = ((avg - duration) / avg) * 100
+            if diff_pct > 10:
+                timing_insight = f"{diff_pct:.0f}% faster than avg"
+            elif diff_pct < -10:
+                timing_insight = f"{abs(diff_pct):.0f}% slower than avg"
+    except Exception:
+        pass
+
+    # Increment task count for onboarding tips
+    if status_val == "success":
+        config.task_count = (config.task_count or 0) + 1
+
+    # Show footer FIRST — user sees result immediately before post-execution I/O
+    if config.display.show_footer:
+        show_footer(
+            backend_name=backend.name,
+            model=model,
+            duration=duration,
+            session_id=session_id,
+            cost_usd=cost,
+            cost_estimated=cost_estimated,
+            savings=savings,
+            savings_vs=savings_vs,
+            selection_reason=selection_reason,
+            has_file_changes=has_file_changes,
+            alternative_costs=alternative_costs,
+            timing_insight=timing_insight,
+            daily_budget=effective_budget,
+            daily_spent=daily_spent,
+            task_count=config.task_count,
+        )
+
+    # --- Post-execution I/O (after footer, user already has their answer) ---
+
     # Record cost in SQLite
     try:
         record_cost(
@@ -755,17 +830,6 @@ async def _execute_task(
             alternative_costs=alternative_costs,
         )
         write_audit_entry(entry)
-
-    # Save last task info for `mdx review --last`
-    _save_last_task(task, backend.name, cwd, full_output)
-
-    # Check if there were file changes (for footer display)
-    last_task_data = _load_last_task()
-    has_file_changes = bool(last_task_data and last_task_data.get("files_modified"))
-
-    # Check if there were file changes (for footer display)
-    last_task_data = _load_last_task()
-    has_file_changes = bool(last_task_data and last_task_data.get("files_modified"))
 
     # Policy enforcement (warn only, never block)
     try:
@@ -809,57 +873,12 @@ async def _execute_task(
     except Exception:
         pass  # Policy enforcement should never block the user
 
-    # Timing intelligence (Feature 8)
-    timing_insight = None
-    try:
-        from .governance.audit_trail import get_average_duration
-
-        avg = get_average_duration(backend=backend.name, task_category=category.category)
-        if avg and avg > 0:
-            diff_pct = ((avg - duration) / avg) * 100
-            if diff_pct > 10:
-                timing_insight = f"{diff_pct:.0f}% faster than avg"
-            elif diff_pct < -10:
-                timing_insight = f"{abs(diff_pct):.0f}% slower than avg"
-    except Exception:
-        pass
-
-    # Refresh daily spend for footer display
-    if effective_budget and daily_spent is not None:
-        # Re-query to include the cost we just recorded
-        try:
-            since_dt, until_dt = get_date_range_for_period("today")
-            daily_spent = get_total_cost(since=since_dt, until=until_dt)
-        except Exception:
-            pass
-
-    # Increment task count for onboarding tips
+    # Save config (task count increment)
     if status_val == "success":
-        config.task_count = (config.task_count or 0) + 1
         try:
             save_config(config)
         except Exception:
             pass  # Config save should never block the user
-
-    # Show footer
-    if config.display.show_footer:
-        show_footer(
-            backend_name=backend.name,
-            model=model,
-            duration=duration,
-            session_id=session_id,
-            cost_usd=cost,
-            cost_estimated=cost_estimated,
-            savings=savings,
-            savings_vs=savings_vs,
-            selection_reason=selection_reason,
-            has_file_changes=has_file_changes,
-            alternative_costs=alternative_costs,
-            timing_insight=timing_insight,
-            daily_budget=effective_budget,
-            daily_spent=daily_spent,
-            task_count=config.task_count,
-        )
 
 
 @app.command()
@@ -870,8 +889,9 @@ def setup() -> None:
       mdx setup                     Show available backends
     """
     from .backends.discovery import KNOWN_CLIS, discover_backends
+    from .config import load_config
 
-    backends = asyncio.run(discover_backends())
+    backends = asyncio.run(discover_backends(force=True))
 
     console.print()
     console.print(f"  [bold]MDx Code[/bold] v{__version__}")
@@ -925,7 +945,7 @@ def status() -> None:
     from .backends.circuit_breaker import get_circuit_breaker
     from .backends.discovery import BACKEND_CLASSES, KNOWN_CLIS, discover_backends
 
-    backends = asyncio.run(discover_backends())
+    backends = asyncio.run(discover_backends(force=True))
     health_results = asyncio.run(_run_health_checks())
 
     console.print()
@@ -985,6 +1005,8 @@ def cost(
       mdx cost --month              Monthly overview
       mdx cost --since 2025-01-01   Custom date range
     """
+    from rich.panel import Panel
+
     from .router.cost_tracker import (
         get_cost_by_backend,
         get_date_range_for_period,
@@ -1087,6 +1109,10 @@ def audit(
       mdx audit --export csv        Export as CSV
       mdx audit --backend claude    Filter by backend
     """
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from .config import load_config
     from .governance.audit_trail import (
         compute_audit_stats,
         export_entries_csv,
@@ -1305,6 +1331,7 @@ def summary(
       mdx summary                   Today's summary
       mdx summary --week            This week's summary
     """
+    from .config import load_config
     from .governance.audit_trail import read_filtered_entries
     from .output.colors import colored_backend
     from .router.cost_tracker import get_date_range_for_period, get_savings, get_total_cost
@@ -1609,6 +1636,7 @@ async def _run_review(
     format: str,
 ) -> None:
     """Execute the adversarial review."""
+    from .config import load_config
     from .governance.audit_trail import AuditEntry, write_audit_entry
     from .governance.policy_engine import evaluate_policies, load_policy_file
     from .review.orchestrator import prepare_target_from_diff, prepare_target_from_paths, run_review
@@ -1775,6 +1803,8 @@ def policy_default(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
 
+    from rich.panel import Panel
+
     from .governance.policy_engine import load_policy_file
 
     policy_file = load_policy_file()
@@ -1902,6 +1932,8 @@ def compliance() -> None:
     Examples:
       mdx compliance                View all compliance mappings
     """
+    from rich.panel import Panel
+
     from .governance.compliance import get_compliance_matrix
 
     matrix = get_compliance_matrix()
