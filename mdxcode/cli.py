@@ -1,6 +1,8 @@
 """MDx Code CLI — The AI Engineering Manager."""
 
 import asyncio
+import json
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,10 +23,17 @@ from .backends.discovery import (
     discover_backends,
     get_best_backend,
 )
-from .config import load_config
+from .config import MDX_DIR, load_config
 from .governance.audit_trail import AuditEntry, read_recent_entries, write_audit_entry
 from .output.footer import show_footer
 from .output.streamer import stream_output
+from .review.orchestrator import (
+    AdversarialReviewResult,
+    prepare_target_from_diff,
+    prepare_target_from_paths,
+    run_review,
+)
+from .review.renderer import render_review
 from .router.cost_tracker import (
     get_cost_by_backend,
     get_date_range_for_period,
@@ -41,6 +50,8 @@ from .router.profiles import (
     get_profiles,
 )
 from .router.strategies import route_task
+
+LAST_TASK_PATH = MDX_DIR / "last_task.json"
 
 console = Console()
 app = typer.Typer(
@@ -303,6 +314,9 @@ async def _execute_task(
         )
         write_audit_entry(entry)
 
+    # Save last task info for `mdx review --last`
+    _save_last_task(task, backend.name, cwd)
+
     # Show footer
     if config.display.show_footer:
         show_footer(
@@ -534,3 +548,159 @@ def audit(count: int = typer.Option(10, "--count", "-n", help="Number of entries
 
     console.print(table)
     console.print()
+
+
+def _save_last_task(task: str, backend_name: str, cwd: Path) -> None:
+    """Save last task info for `mdx review --last`."""
+    try:
+        # Capture git diff of changes made
+        diff = ""
+        files_modified: list[str] = []
+        try:
+            result = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True, text=True, cwd=str(cwd), timeout=10,
+            )
+            diff = result.stdout
+            # Also check for untracked files
+            result2 = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD"],
+                capture_output=True, text=True, cwd=str(cwd), timeout=10,
+            )
+            files_modified = [f for f in result2.stdout.strip().splitlines() if f]
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+        data = {
+            "task": task,
+            "backend": backend_name,
+            "files_modified": files_modified,
+            "diff": diff,
+            "working_directory": str(cwd),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        LAST_TASK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        LAST_TASK_PATH.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass  # Last task tracking should never block the user
+
+
+def _load_last_task() -> Optional[dict]:
+    """Load the last task info for `mdx review --last`."""
+    if not LAST_TASK_PATH.exists():
+        return None
+    try:
+        return json.loads(LAST_TASK_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _get_git_diff(diff_ref: str) -> Optional[str]:
+    """Run git diff with the given reference and return the output."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", diff_ref],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout
+        return None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+@app.command()
+def review(
+    paths: Optional[list[str]] = typer.Argument(None, help="Files or directories to review"),
+    last: bool = typer.Option(False, "--last", help="Review the last change MDx made"),
+    diff: Optional[str] = typer.Option(None, "--diff", help="Review a git diff (e.g., HEAD~1, main..feature)"),
+    backends: Optional[str] = typer.Option(
+        None, "--backends", help="Comma-separated backends to use (e.g., 'claude,codex')"
+    ),
+    format: str = typer.Option("rich", "--format", "-f", help="Output format: rich or json"),
+) -> None:
+    """Run adversarial multi-model code review."""
+    asyncio.run(_run_review(paths, last, diff, backends, format))
+
+
+async def _run_review(
+    paths: Optional[list[str]],
+    last: bool,
+    diff_ref: Optional[str],
+    backends_str: Optional[str],
+    format: str,
+) -> None:
+    """Execute the adversarial review."""
+    # Parse backend list
+    backend_names: Optional[list[str]] = None
+    if backends_str:
+        backend_names = [b.strip() for b in backends_str.split(",") if b.strip()]
+
+    # Determine review target
+    if last:
+        task_data = _load_last_task()
+        if not task_data or not task_data.get("diff"):
+            console.print("[yellow]No recent changes to review. Run a task first, then try again.[/yellow]")
+            raise typer.Exit(1)
+        target = prepare_target_from_diff(task_data["diff"], diff_ref="last task")
+        if not target.content.strip():
+            console.print("[yellow]No changes detected in last task.[/yellow]")
+            raise typer.Exit(1)
+
+    elif diff_ref:
+        diff_text = _get_git_diff(diff_ref)
+        if not diff_text:
+            console.print(f"[red]No diff found for '{diff_ref}'. Check the reference.[/red]")
+            raise typer.Exit(1)
+        target = prepare_target_from_diff(diff_text, diff_ref=diff_ref)
+
+    elif paths:
+        target = prepare_target_from_paths(paths)
+        if not target.content.strip():
+            console.print("[red]No reviewable content found in the specified paths.[/red]")
+            raise typer.Exit(1)
+
+    else:
+        console.print("[red]Specify files/directories, --last, or --diff to review.[/red]")
+        console.print()
+        console.print("  mdx review src/              [dim]# Review a directory[/dim]")
+        console.print("  mdx review src/auth/login.py [dim]# Review a specific file[/dim]")
+        console.print("  mdx review --last            [dim]# Review last MDx change[/dim]")
+        console.print("  mdx review --diff HEAD~1     [dim]# Review a git diff[/dim]")
+        raise typer.Exit(1)
+
+    # Show what we're reviewing
+    if format != "json":
+        console.print()
+        console.print(f"  [dim]Reviewing: {target.description}[/dim]")
+
+    # Run the review
+    result = await run_review(target=target, backends=backend_names)
+
+    if not result.backend_results:
+        console.print("[red]No backends available for review.[/red]")
+        console.print("Install at least one backend: Claude Code, Codex CLI, or Gemini CLI.")
+        raise typer.Exit(1)
+
+    # Render output
+    json_output = render_review(result, format=format)
+    if json_output:
+        console.print(json_output)
+
+    # Write review audit entry
+    config = load_config()
+    if config.audit.enabled:
+        successful = [br for br in result.backend_results if not br.error]
+        findings_per_backend = {br.backend_name: len(br.findings) for br in successful}
+        entry = AuditEntry(
+            session_id=str(uuid.uuid4()),
+            task=f"adversarial_review: {target.description}",
+            backend=",".join(br.backend_name for br in successful),
+            working_directory=str(Path.cwd()),
+            duration_seconds=result.total_duration_seconds,
+            cost_usd=result.total_cost_usd if result.total_cost_usd > 0 else None,
+            status="success",
+            backend_selection_reason="adversarial_review",
+            backends_available=[br.backend_name for br in result.backend_results],
+        )
+        write_audit_entry(entry)
