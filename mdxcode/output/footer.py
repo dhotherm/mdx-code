@@ -20,6 +20,9 @@ def show_footer(
     duration: float,
     session_id: str,
     cost_usd: Optional[float] = None,
+    cost_estimated: bool = False,
+    savings: float = 0.0,
+    savings_vs: str = "",
     selection_reason: Optional[str] = None,
 ) -> None:
     """Display the MDx Code footer after task completion."""
@@ -40,9 +43,15 @@ def show_footer(
         f"in {duration:.1f}s{reason_display}"
     )
 
-    # Cost if available
+    # Cost line with savings
     if cost_usd is not None:
-        console.print(f"  [green]\u2713[/green] Cost: ${cost_usd:.4f}")
+        est_marker = "~" if cost_estimated else ""
+        cost_str = f"  [green]\u2713[/green] Cost: {est_marker}${cost_usd:.4f}"
+        if cost_estimated:
+            cost_str += " (estimated)"
+        if savings > 0 and savings_vs:
+            cost_str += f" (saved ${savings:.2f} vs {savings_vs.title()})"
+        console.print(cost_str)
 
     # Audit line
     session_short = session_id[:8] if len(session_id) >= 8 else session_id

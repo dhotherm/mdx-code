@@ -34,6 +34,11 @@ class AuditEntry(BaseModel):
     status: str = "success"
     backend_selection_reason: str = ""
     backends_available: list[str] = Field(default_factory=list)
+    routing_strategy: Optional[str] = None
+    routing_reason: Optional[str] = None
+    task_category: Optional[str] = None
+    cost_estimated: bool = False
+    alternative_costs: dict[str, float] = Field(default_factory=dict)
 
 
 def compute_chain_hash(entry_dict: dict, previous_hash: str) -> str:
