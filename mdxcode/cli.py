@@ -24,7 +24,21 @@ from .backends.discovery import (
     get_best_backend,
 )
 from .config import MDX_DIR, load_config
-from .governance.audit_trail import AuditEntry, read_recent_entries, write_audit_entry
+from .governance.audit_trail import (
+    AuditEntry,
+    compute_audit_stats,
+    export_entries_csv,
+    read_filtered_entries,
+    read_recent_entries,
+    verify_audit_integrity,
+    write_audit_entry,
+)
+from .governance.compliance import get_compliance_matrix
+from .governance.policy_engine import (
+    STARTER_POLICY,
+    evaluate_policies,
+    load_policy_file,
+)
 from .output.footer import show_footer
 from .output.streamer import stream_output
 from .review.orchestrator import (
@@ -61,6 +75,12 @@ app = typer.Typer(
     invoke_without_command=True,
     context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
 )
+
+policy_app = typer.Typer(help="Policy management commands")
+app.add_typer(policy_app, name="policy")
+
+hook_app = typer.Typer(help="Git hook management commands")
+app.add_typer(hook_app, name="hook")
 
 
 def show_banner(backends: Optional[list] = None) -> None:
@@ -317,6 +337,49 @@ async def _execute_task(
     # Save last task info for `mdx review --last`
     _save_last_task(task, backend.name, cwd)
 
+    # Policy enforcement (warn only, never block)
+    try:
+        policy_file = load_policy_file()
+        if policy_file:
+            last_task_data = _load_last_task()
+            modified = last_task_data.get("files_modified", []) if last_task_data else []
+            if modified:
+                policy_result = evaluate_policies(policy_file, modified)
+                if policy_result.matching_policies:
+                    policy_eval = {
+                        "matching_policies": policy_result.matching_policies,
+                        "requires_review": policy_result.requires_review,
+                        "requires_approval": policy_result.requires_approval,
+                        "min_reviewers": policy_result.min_reviewers,
+                    }
+                    if policy_result.requires_review:
+                        policies_str = ", ".join(policy_result.matching_policies)
+                        console.print(
+                            f"  [yellow]Policy [{policies_str}]: adversarial review recommended[/yellow]"
+                        )
+                        console.print("  [dim]Run: mdx review --last[/dim]")
+                    if policy_result.requires_approval:
+                        console.print(
+                            "  [yellow]Policy requires human approval for these files.[/yellow]"
+                        )
+                        approve = console.input("  Approve? [y/N] ").strip().lower()
+                        if approve != "y":
+                            console.print("  [dim]Approval deferred.[/dim]")
+                    # Update audit entry with policy evaluation
+                    if config.audit.enabled:
+                        policy_entry = AuditEntry(
+                            session_id=session_id,
+                            task=f"policy_check: {task}",
+                            backend=backend.name,
+                            working_directory=str(cwd),
+                            files_modified=modified,
+                            status="success",
+                            policy_evaluation=policy_eval,
+                        )
+                        write_audit_entry(policy_entry)
+    except Exception:
+        pass  # Policy enforcement should never block the user
+
     # Show footer
     if config.display.show_footer:
         show_footer(
@@ -511,9 +574,109 @@ def cost(
 
 
 @app.command()
-def audit(count: int = typer.Option(10, "--count", "-n", help="Number of entries to show")) -> None:
-    """Show recent audit entries."""
-    entries = read_recent_entries(count=count)
+def audit(
+    count: int = typer.Option(10, "--count", "-n", help="Number of entries to show"),
+    path: Optional[str] = typer.Option(None, "--path", help="Filter by working directory path"),
+    since: Optional[str] = typer.Option(None, "--since", help="Filter entries since date (YYYY-MM-DD)"),
+    entry_type: Optional[str] = typer.Option(None, "--type", help="Filter by type (e.g., adversarial_review)"),
+    backend_filter: Optional[str] = typer.Option(None, "--backend", help="Filter by backend name"),
+    verify: bool = typer.Option(False, "--verify", help="Verify chain hash integrity"),
+    export: Optional[str] = typer.Option(None, "--export", help="Export format: csv or json"),
+    stats: bool = typer.Option(False, "--stats", help="Show audit statistics"),
+) -> None:
+    """Show recent audit entries with filtering, export, and verification."""
+    config = load_config()
+    audit_dir = Path(config.audit.directory).expanduser()
+
+    # --verify mode: check integrity of all JSONL files
+    if verify:
+        if not audit_dir.exists():
+            console.print("[dim]No audit directory found.[/dim]")
+            return
+        jsonl_files = sorted(audit_dir.glob("*.jsonl"))
+        if not jsonl_files:
+            console.print("[dim]No audit files found.[/dim]")
+            return
+        console.print()
+        console.print("  [bold]Audit Integrity Verification[/bold]")
+        console.print()
+        all_valid = True
+        for filepath in jsonl_files:
+            valid, error = verify_audit_integrity(filepath)
+            if valid:
+                console.print(f"  [green]\u2713[/green] {filepath.name}")
+            else:
+                console.print(f"  [red]\u2717[/red] {filepath.name}: {error}")
+                all_valid = False
+        console.print()
+        if all_valid:
+            console.print("  [green]All audit files verified successfully.[/green]")
+        else:
+            console.print("  [red]Integrity violations detected![/red]")
+        console.print()
+        return
+
+    # --stats mode: show summary statistics
+    if stats:
+        has_filters = any([since, entry_type, backend_filter, path])
+        if has_filters:
+            entries = read_filtered_entries(
+                audit_dir, since=since, entry_type=entry_type,
+                backend=backend_filter, path=path,
+            )
+        else:
+            entries = read_filtered_entries(audit_dir)
+
+        if not entries:
+            console.print("[dim]No audit entries found.[/dim]")
+            return
+
+        s = compute_audit_stats(entries)
+        lines: list[str] = []
+        lines.append("")
+        lines.append(f"  Total actions: [bold]{s['total_actions']}[/bold]")
+        lines.append(f"  Tasks: {s['tasks']}    Reviews: {s['reviews']}")
+        lines.append(f"  Policy checks: {s['policy_checks']}    Violations: {s['policy_violations']}")
+        lines.append(f"  Total cost: [bold]${s['total_cost']:.2f}[/bold]")
+        lines.append("")
+        if s["by_backend"]:
+            lines.append("  By backend:")
+            for bname, bcount in sorted(s["by_backend"].items(), key=lambda x: x[1], reverse=True):
+                lines.append(f"    {bname:<12} {bcount} actions")
+            lines.append("")
+
+        content = "\n".join(lines)
+        panel = Panel(content, title="Audit Statistics", border_style="blue", width=min(console.width, 56))
+        console.print(panel)
+        return
+
+    # --export mode: output CSV or JSON
+    if export:
+        entries = read_filtered_entries(
+            audit_dir, since=since, entry_type=entry_type,
+            backend=backend_filter, path=path,
+        )
+        if export.lower() == "csv":
+            csv_text = export_entries_csv(entries)
+            console.print(csv_text, end="")
+        elif export.lower() == "json":
+            import json as json_mod
+            console.print(json_mod.dumps(entries, indent=2, default=str))
+        else:
+            console.print(f"[red]Unknown export format: {export}. Use 'csv' or 'json'.[/red]")
+        return
+
+    # Default: show recent entries table (with optional filters)
+    has_filters = any([since, entry_type, backend_filter, path])
+    if has_filters:
+        entries = read_filtered_entries(
+            audit_dir, since=since, entry_type=entry_type,
+            backend=backend_filter, path=path,
+        )
+        # Limit to count
+        entries = entries[-count:] if len(entries) > count else entries
+    else:
+        entries = read_recent_entries(count=count)
 
     if not entries:
         console.print("[dim]No audit entries found.[/dim]")
@@ -531,7 +694,7 @@ def audit(count: int = typer.Option(10, "--count", "-n", help="Number of entries
 
     for entry in entries:
         ts = entry.get("timestamp", "")[:19]
-        backend = entry.get("backend", "?")
+        backend_name = entry.get("backend", "?")
         task = entry.get("task", "?")
         dur = f"{entry.get('duration_seconds', 0):.1f}s"
         status_val = entry.get("status", "?")
@@ -541,7 +704,7 @@ def audit(count: int = typer.Option(10, "--count", "-n", help="Number of entries
         reason = entry.get("routing_reason") or entry.get("backend_selection_reason", "")
 
         table.add_row(
-            ts, backend, task, dur,
+            ts, backend_name, task, dur,
             f"[{status_style}]{status_val}[/{status_style}]",
             cost_str, reason,
         )
@@ -614,19 +777,21 @@ def review(
     paths: Optional[list[str]] = typer.Argument(None, help="Files or directories to review"),
     last: bool = typer.Option(False, "--last", help="Review the last change MDx made"),
     diff: Optional[str] = typer.Option(None, "--diff", help="Review a git diff (e.g., HEAD~1, main..feature)"),
+    staged: bool = typer.Option(False, "--staged", help="Review staged git changes (for pre-commit)"),
     backends: Optional[str] = typer.Option(
         None, "--backends", help="Comma-separated backends to use (e.g., 'claude,codex')"
     ),
     format: str = typer.Option("rich", "--format", "-f", help="Output format: rich or json"),
 ) -> None:
     """Run adversarial multi-model code review."""
-    asyncio.run(_run_review(paths, last, diff, backends, format))
+    asyncio.run(_run_review(paths, last, diff, staged, backends, format))
 
 
 async def _run_review(
     paths: Optional[list[str]],
     last: bool,
     diff_ref: Optional[str],
+    staged: bool,
     backends_str: Optional[str],
     format: str,
 ) -> None:
@@ -636,8 +801,23 @@ async def _run_review(
     if backends_str:
         backend_names = [b.strip() for b in backends_str.split(",") if b.strip()]
 
+    # Handle --staged: review staged git changes
+    if staged:
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--cached"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                console.print("[yellow]No staged changes to review.[/yellow]")
+                raise typer.Exit(1)
+            target = prepare_target_from_diff(result.stdout, diff_ref="staged")
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            console.print("[red]Could not get staged diff. Are you in a git repo?[/red]")
+            raise typer.Exit(1)
+
     # Determine review target
-    if last:
+    elif last:
         task_data = _load_last_task()
         if not task_data or not task_data.get("diff"):
             console.print("[yellow]No recent changes to review. Run a task first, then try again.[/yellow]")
@@ -692,6 +872,24 @@ async def _run_review(
     if config.audit.enabled:
         successful = [br for br in result.backend_results if not br.error]
         findings_per_backend = {br.backend_name: len(br.findings) for br in successful}
+
+        # Evaluate reviewed files against policies
+        policy_eval = None
+        try:
+            policy_file = load_policy_file()
+            if policy_file and target.files:
+                policy_result = evaluate_policies(policy_file, target.files)
+                if policy_result.matching_policies:
+                    total_findings = sum(findings_per_backend.values())
+                    policy_eval = {
+                        "matching_policies": policy_result.matching_policies,
+                        "requires_review": policy_result.requires_review,
+                        "requires_approval": policy_result.requires_approval,
+                        "findings_count": total_findings,
+                    }
+        except Exception:
+            pass
+
         entry = AuditEntry(
             session_id=str(uuid.uuid4()),
             task=f"adversarial_review: {target.description}",
@@ -702,5 +900,259 @@ async def _run_review(
             status="success",
             backend_selection_reason="adversarial_review",
             backends_available=[br.backend_name for br in result.backend_results],
+            policy_evaluation=policy_eval,
         )
         write_audit_entry(entry)
+
+
+# --- Policy commands ---
+
+
+@policy_app.callback(invoke_without_command=True)
+def policy_default(ctx: typer.Context) -> None:
+    """Show active policies."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    policy_file = load_policy_file()
+    if policy_file is None:
+        console.print("[dim]No .mdxpolicy file found.[/dim]")
+        console.print("Run [bold]mdx policy init[/bold] to create one.")
+        return
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append(f"  Version: {policy_file.version}")
+    lines.append(f"  Policies: {len(policy_file.policies)}")
+    lines.append("")
+
+    for p in policy_file.policies:
+        severity_style = {
+            "critical": "red",
+            "high": "yellow",
+            "medium": "blue",
+            "low": "dim",
+        }.get(p.severity, "dim")
+
+        reqs: list[str] = []
+        if p.requires.adversarial_review:
+            reqs.append("review")
+        if p.requires.human_approval:
+            reqs.append("approval")
+        if p.requires.min_reviewers > 1:
+            reqs.append(f"{p.requires.min_reviewers} reviewers")
+        req_str = ", ".join(reqs) if reqs else "none"
+
+        lines.append(f"  [bold]{p.name}[/bold]  [{severity_style}]{p.severity}[/{severity_style}]")
+        if p.description:
+            lines.append(f"    {p.description}")
+        lines.append(f"    Paths: {len(p.paths)}  Requires: {req_str}")
+        lines.append("")
+
+    defaults = policy_file.defaults
+    lines.append("  [dim]Defaults:[/dim]")
+    lines.append(
+        f"    review={defaults.adversarial_review}  "
+        f"approval={defaults.human_approval}  "
+        f"severity={defaults.severity}"
+    )
+    lines.append("")
+
+    content = "\n".join(lines)
+    panel = Panel(content, title="Active Policies", border_style="green", width=min(console.width, 70))
+    console.print(panel)
+
+
+@policy_app.command("check")
+def policy_check(
+    files: list[str] = typer.Argument(..., help="Files to check against policies"),
+) -> None:
+    """Check files against active policies."""
+    policy_file = load_policy_file()
+    if policy_file is None:
+        console.print("[dim]No .mdxpolicy file found. Run mdx policy init to create one.[/dim]")
+        raise typer.Exit(1)
+
+    result = evaluate_policies(policy_file, files)
+
+    console.print()
+    if result.matching_policies:
+        console.print(f"  [bold]Matching policies:[/bold] {', '.join(result.matching_policies)}")
+        if result.requires_review:
+            console.print("  [yellow]Adversarial review required[/yellow]")
+        if result.requires_approval:
+            console.print("  [yellow]Human approval required[/yellow]")
+        if result.min_reviewers > 1:
+            console.print(f"  [dim]Minimum reviewers: {result.min_reviewers}[/dim]")
+    else:
+        console.print("  [green]No policies triggered.[/green] Default rules apply.")
+    console.print()
+
+    # Show per-file breakdown
+    for filepath in files:
+        matched: list[str] = []
+        for policy in policy_file.policies:
+            for pattern in policy.paths:
+                from .governance.policy_engine import _match_path
+
+                if _match_path(filepath, pattern):
+                    matched.append(policy.name)
+                    break
+        if matched:
+            console.print(f"  {filepath}  \u2192  {', '.join(matched)}")
+        else:
+            console.print(f"  {filepath}  \u2192  [dim]no match[/dim]")
+    console.print()
+
+
+@policy_app.command("init")
+def policy_init() -> None:
+    """Create a starter .mdxpolicy file in the current directory."""
+    target = Path.cwd() / ".mdxpolicy"
+    if target.exists():
+        console.print(f"[yellow].mdxpolicy already exists at {target}[/yellow]")
+        raise typer.Exit(1)
+
+    target.write_text(STARTER_POLICY)
+    console.print(f"[green]Created .mdxpolicy at {target}[/green]")
+    console.print("Edit it to match your project's security requirements.")
+
+
+# --- Compliance command ---
+
+
+@app.command()
+def compliance() -> None:
+    """Show regulatory compliance mapping matrix."""
+    matrix = get_compliance_matrix()
+
+    for framework, features in matrix.items():
+        lines: list[str] = []
+        lines.append("")
+        for feature, description in features.items():
+            lines.append(f"  [bold]{feature}[/bold]")
+            lines.append(f"    {description}")
+            lines.append("")
+
+        display_name = {
+            "SOC2": "SOC 2",
+            "EU_AI_Act": "EU AI Act",
+            "OSFI_B13": "OSFI B-13",
+            "OCC_2011_12": "OCC 2011-12",
+        }.get(framework, framework)
+
+        content = "\n".join(lines)
+        panel = Panel(
+            content,
+            title=f"Compliance: {display_name}",
+            border_style="blue",
+            width=min(console.width, 80),
+        )
+        console.print(panel)
+
+
+# --- Hook commands ---
+
+HOOK_MARKER = "# MDx Code pre-commit hook"
+
+
+@hook_app.command("install")
+def hook_install() -> None:
+    """Install MDx Code git pre-commit hook."""
+    git_dir = Path.cwd() / ".git"
+    if not git_dir.is_dir():
+        console.print("[red]Not a git repository. Run this from a git repo root.[/red]")
+        raise typer.Exit(1)
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / "pre-commit"
+
+    if hook_path.exists():
+        content = hook_path.read_text()
+        if HOOK_MARKER not in content:
+            console.print("[yellow]A pre-commit hook already exists (not ours). Aborting.[/yellow]")
+            console.print(f"  {hook_path}")
+            raise typer.Exit(1)
+
+    hook_content = f"""\
+#!/bin/sh
+{HOOK_MARKER}
+# Installed by: mdx hook install
+exec mdx hook check
+"""
+    hook_path.write_text(hook_content)
+    hook_path.chmod(0o755)
+    console.print("[green]Pre-commit hook installed.[/green]")
+    console.print(f"  {hook_path}")
+
+
+@hook_app.command("uninstall")
+def hook_uninstall() -> None:
+    """Remove the MDx Code pre-commit hook."""
+    hook_path = Path.cwd() / ".git" / "hooks" / "pre-commit"
+
+    if not hook_path.exists():
+        console.print("[dim]No pre-commit hook found.[/dim]")
+        return
+
+    content = hook_path.read_text()
+    if HOOK_MARKER not in content:
+        console.print("[yellow]Pre-commit hook exists but was not installed by MDx. Not removing.[/yellow]")
+        return
+
+    hook_path.unlink()
+    console.print("[green]Pre-commit hook removed.[/green]")
+
+
+@hook_app.command("status")
+def hook_status() -> None:
+    """Check if the MDx pre-commit hook is installed."""
+    hook_path = Path.cwd() / ".git" / "hooks" / "pre-commit"
+
+    if not hook_path.exists():
+        console.print("  [dim]Pre-commit hook: not installed[/dim]")
+        return
+
+    content = hook_path.read_text()
+    if HOOK_MARKER in content:
+        console.print("  [green]Pre-commit hook: installed (MDx Code)[/green]")
+    else:
+        console.print("  [yellow]Pre-commit hook: installed (not MDx — foreign hook)[/yellow]")
+
+
+@hook_app.command("check", hidden=True)
+def hook_check() -> None:
+    """Check staged files against policies (used by git hook)."""
+    # Get staged file list
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True, text=True, timeout=10,
+        )
+        staged_files = [f for f in result.stdout.strip().splitlines() if f]
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # Can't get staged files — don't block
+        raise typer.Exit(0)
+
+    if not staged_files:
+        raise typer.Exit(0)
+
+    policy_file = load_policy_file()
+    if policy_file is None:
+        raise typer.Exit(0)
+
+    policy_result = evaluate_policies(policy_file, staged_files)
+
+    if policy_result.requires_review:
+        policies_str = ", ".join(policy_result.matching_policies)
+        console.print(f"[yellow]MDx Policy [{policies_str}]: adversarial review required[/yellow]")
+        console.print()
+        for f in staged_files:
+            console.print(f"  {f}")
+        console.print()
+        console.print("Run: [bold]mdx review --staged[/bold]")
+        console.print("To bypass: [dim]git commit --no-verify[/dim]")
+        raise typer.Exit(1)
+
+    raise typer.Exit(0)

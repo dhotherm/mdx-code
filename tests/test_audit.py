@@ -10,6 +10,7 @@ from mdxcode.governance.audit_trail import (
     verify_audit_integrity,
     write_audit_entry,
     read_recent_entries,
+    read_filtered_entries,
 )
 
 
@@ -165,3 +166,88 @@ class TestReadRecentEntries:
     def test_nonexistent_dir(self, tmp_path):
         entries = read_recent_entries(tmp_path / "nonexistent")
         assert entries == []
+
+
+class TestPolicyEvaluationField:
+    """Tests for backward-compatible policy_evaluation field."""
+
+    def test_default_is_none(self):
+        entry = AuditEntry(task="test", backend="claude")
+        assert entry.policy_evaluation is None
+
+    def test_set_policy_evaluation(self):
+        entry = AuditEntry(
+            task="test",
+            backend="claude",
+            policy_evaluation={
+                "matching_policies": ["security-critical"],
+                "requires_review": True,
+                "requires_approval": True,
+            },
+        )
+        assert entry.policy_evaluation is not None
+        assert "security-critical" in entry.policy_evaluation["matching_policies"]
+        assert entry.policy_evaluation["requires_review"] is True
+
+    def test_serialization_roundtrip(self, audit_dir):
+        entry = AuditEntry(
+            session_id="pe-1",
+            task="policy test",
+            backend="claude",
+            policy_evaluation={"matching_policies": ["infra"], "requires_review": True},
+        )
+        filepath = write_audit_entry(entry, audit_dir)
+        data = json.loads(filepath.read_text().strip())
+        assert data["policy_evaluation"]["matching_policies"] == ["infra"]
+
+    def test_backward_compat_no_field(self, audit_dir):
+        """Entries without policy_evaluation should still work."""
+        entry = AuditEntry(session_id="bc-1", task="old task", backend="claude")
+        filepath = write_audit_entry(entry, audit_dir)
+        data = json.loads(filepath.read_text().strip())
+        assert data["policy_evaluation"] is None
+
+        # Should still be readable
+        entries = read_recent_entries(audit_dir, count=1)
+        assert len(entries) == 1
+        assert entries[0]["policy_evaluation"] is None
+
+
+class TestReadFilteredEntriesIntegration:
+    """Integration tests for read_filtered_entries in test_audit.py."""
+
+    def test_filter_by_backend(self, audit_dir):
+        for i, backend in enumerate(["claude", "codex", "claude"]):
+            entry = AuditEntry(session_id=f"f-{i}", task=f"task {i}", backend=backend)
+            write_audit_entry(entry, audit_dir)
+
+        entries = read_filtered_entries(audit_dir, backend="claude")
+        assert len(entries) == 2
+
+    def test_filter_by_entry_type(self, audit_dir):
+        entry1 = AuditEntry(session_id="r1", task="fix bug", backend="claude")
+        entry2 = AuditEntry(
+            session_id="r2", task="adversarial_review: src/", backend="codex"
+        )
+        write_audit_entry(entry1, audit_dir)
+        write_audit_entry(entry2, audit_dir)
+
+        entries = read_filtered_entries(audit_dir, entry_type="adversarial_review")
+        assert len(entries) == 1
+        assert entries[0]["task"].startswith("adversarial_review")
+
+    def test_combined_filters(self, audit_dir):
+        entry1 = AuditEntry(
+            session_id="c1", task="fix bug", backend="claude",
+            working_directory="/home/project",
+        )
+        entry2 = AuditEntry(
+            session_id="c2", task="fix bug", backend="codex",
+            working_directory="/home/project",
+        )
+        write_audit_entry(entry1, audit_dir)
+        write_audit_entry(entry2, audit_dir)
+
+        entries = read_filtered_entries(audit_dir, backend="claude", path="/home/project")
+        assert len(entries) == 1
+        assert entries[0]["backend"] == "claude"

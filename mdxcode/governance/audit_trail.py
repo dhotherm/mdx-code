@@ -1,6 +1,8 @@
 """Immutable audit trail with chain hashing."""
 
+import csv
 import hashlib
+import io
 import json
 import uuid
 from datetime import datetime, timezone
@@ -39,6 +41,7 @@ class AuditEntry(BaseModel):
     task_category: Optional[str] = None
     cost_estimated: bool = False
     alternative_costs: dict[str, float] = Field(default_factory=dict)
+    policy_evaluation: Optional[dict] = None
 
 
 def compute_chain_hash(entry_dict: dict, previous_hash: str) -> str:
@@ -140,3 +143,157 @@ def read_recent_entries(audit_dir: Optional[Path] = None, count: int = 10) -> li
                 return entries
 
     return entries
+
+
+def _read_all_entries(audit_dir: Path) -> list[dict]:
+    """Read all audit entries from all JSONL files in order."""
+    entries: list[dict] = []
+    if not audit_dir.exists():
+        return entries
+    for filepath in sorted(audit_dir.glob("*.jsonl")):
+        text = filepath.read_text().strip()
+        if not text:
+            continue
+        for line in text.splitlines():
+            entries.append(json.loads(line))
+    return entries
+
+
+def read_filtered_entries(
+    audit_dir: Optional[Path] = None,
+    since: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    backend: Optional[str] = None,
+    path: Optional[str] = None,
+) -> list[dict]:
+    """
+    Read audit entries with optional filters.
+
+    Args:
+        audit_dir: Directory containing JSONL audit files.
+        since: ISO date string (YYYY-MM-DD) — only entries on or after this date.
+        entry_type: Filter by task prefix (e.g., "adversarial_review").
+        backend: Filter by backend name.
+        path: Filter by working_directory containing this substring.
+    """
+    if audit_dir is None:
+        config = load_config()
+        audit_dir = Path(config.audit.directory).expanduser()
+
+    entries = _read_all_entries(audit_dir)
+    filtered: list[dict] = []
+
+    for entry in entries:
+        if since:
+            ts = entry.get("timestamp", "")[:10]
+            if ts < since:
+                continue
+        if entry_type:
+            task = entry.get("task", "")
+            if not task.startswith(entry_type):
+                continue
+        if backend:
+            if entry.get("backend", "") != backend:
+                continue
+        if path:
+            wd = entry.get("working_directory", "")
+            if path not in wd:
+                continue
+        filtered.append(entry)
+
+    return filtered
+
+
+def export_entries_csv(entries: list[dict]) -> str:
+    """
+    Export audit entries as CSV string.
+
+    Columns: timestamp, type, task, backend, model, files_modified,
+    policy_name, policy_compliant, review_conducted, findings_count, cost_usd
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "timestamp", "type", "task", "backend", "model", "files_modified",
+        "policy_name", "policy_compliant", "review_conducted", "findings_count",
+        "cost_usd",
+    ])
+
+    for entry in entries:
+        task = entry.get("task", "")
+        if task.startswith("adversarial_review"):
+            entry_type = "review"
+        else:
+            entry_type = "task"
+
+        policy_eval = entry.get("policy_evaluation") or {}
+        policy_names = ";".join(policy_eval.get("matching_policies", []))
+        policy_compliant = "yes" if not policy_eval.get("requires_review") else "no"
+        if not policy_eval:
+            policy_compliant = ""
+
+        files = ";".join(entry.get("files_modified", []))
+        review_conducted = "yes" if entry_type == "review" else "no"
+        findings_count = policy_eval.get("findings_count", "")
+
+        writer.writerow([
+            entry.get("timestamp", ""),
+            entry_type,
+            task,
+            entry.get("backend", ""),
+            entry.get("model", ""),
+            files,
+            policy_names,
+            policy_compliant,
+            review_conducted,
+            findings_count,
+            entry.get("cost_usd", ""),
+        ])
+
+    return output.getvalue()
+
+
+def compute_audit_stats(entries: list[dict]) -> dict:
+    """
+    Compute summary statistics from audit entries.
+
+    Returns dict with: total_actions, tasks, reviews, policy_checks,
+    by_backend breakdown, policy_violations, total_cost.
+    """
+    stats: dict = {
+        "total_actions": len(entries),
+        "tasks": 0,
+        "reviews": 0,
+        "policy_checks": 0,
+        "by_backend": {},
+        "policy_violations": 0,
+        "total_cost": 0.0,
+    }
+
+    for entry in entries:
+        task = entry.get("task", "")
+        backend = entry.get("backend", "")
+        cost = entry.get("cost_usd") or 0.0
+
+        if task.startswith("adversarial_review"):
+            stats["reviews"] += 1
+        else:
+            stats["tasks"] += 1
+
+        policy_eval = entry.get("policy_evaluation")
+        if policy_eval:
+            stats["policy_checks"] += 1
+            if policy_eval.get("requires_review") and not task.startswith("adversarial_review"):
+                stats["policy_violations"] += 1
+
+        # By backend
+        if backend:
+            for b in backend.split(","):
+                b = b.strip()
+                if b:
+                    stats["by_backend"][b] = stats["by_backend"].get(b, 0) + 1
+
+        stats["total_cost"] += float(cost)
+
+    stats["total_cost"] = round(stats["total_cost"], 4)
+    return stats
