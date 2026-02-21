@@ -1,43 +1,76 @@
 """Real-time output streaming from backend adapters."""
 
-import sys
+import asyncio
 import time
 from typing import AsyncIterator
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.spinner import Spinner
 
 console = Console()
 
+# Markers that suggest content is markdown
+_MD_MARKERS = ("**", "##", "```", "- ", "* ", "1. ", "> ", "[", "| ")
+
+
+def _looks_like_markdown(text: str) -> bool:
+    """Check if text contains markdown formatting."""
+    return any(marker in text for marker in _MD_MARKERS)
+
 
 async def stream_output(chunks: AsyncIterator[str]) -> tuple[str, float]:
     """
-    Stream output chunks to the terminal in real-time.
-    Shows a spinner until the first chunk arrives.
+    Stream output from a backend, rendering markdown when detected.
+
+    Shows a spinner with elapsed timer until the first chunk arrives,
+    then transitions to "Receiving..." while buffering. After all chunks
+    are received, renders the full output as Rich markdown (if detected)
+    or as raw text.
 
     Returns (full_output, duration_seconds).
     """
     start = time.monotonic()
     captured: list[str] = []
     first_chunk = True
+    receiving = False
 
-    # Start spinner
-    spinner = Spinner("dots", text="[dim] Thinking...[/dim]")
+    spinner = Spinner("dots", text="[dim] Thinking... 0.0s[/dim]")
 
     with console.status(spinner, spinner_style="cyan") as status:
-        async for chunk in chunks:
-            if first_chunk:
-                # Stop the spinner before printing first output
-                first_chunk = False
-                status.stop()
-                console.print()  # Clean line after spinner
+        # Background task to update the spinner with elapsed time
+        async def update_timer() -> None:
+            while True:
+                elapsed = time.monotonic() - start
+                phase = "Receiving..." if receiving else "Thinking..."
+                status.update(
+                    Spinner("dots", text=f"[dim] {phase} {elapsed:.1f}s[/dim]")
+                )
+                await asyncio.sleep(0.1)
 
-            sys.stdout.write(chunk)
-            sys.stdout.flush()
-            captured.append(chunk)
+        timer_task = asyncio.create_task(update_timer())
 
-    # If we never got any output, status context manager handles cleanup
+        try:
+            async for chunk in chunks:
+                if first_chunk:
+                    first_chunk = False
+                    receiving = True
+                captured.append(chunk)
+        finally:
+            timer_task.cancel()
+            try:
+                await timer_task
+            except asyncio.CancelledError:
+                pass
 
     duration = time.monotonic() - start
     full_output = "".join(captured)
+
+    # Render output
+    if full_output.strip():
+        if _looks_like_markdown(full_output):
+            console.print(Markdown(full_output.strip()))
+        else:
+            console.print(full_output, end="")
+
     return full_output, duration

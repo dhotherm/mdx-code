@@ -1,8 +1,11 @@
 """The MDx Code footer displayed after task completion."""
 
+import sys
 from typing import Optional
 
 from rich.console import Console
+
+from .colors import colored_backend
 
 console = Console()
 
@@ -24,6 +27,7 @@ def show_footer(
     savings_vs: str = "",
     selection_reason: Optional[str] = None,
     has_file_changes: bool = False,
+    alternative_costs: dict[str, float] | None = None,
 ) -> None:
     """Display the MDx Code footer after task completion."""
     width = min(console.width, 52)
@@ -32,14 +36,14 @@ def show_footer(
     console.print()
     console.print(f"[dim]\u2500\u2500\u2500 MDx Code {separator[12:]}[/dim]")
 
-    # Completion line
+    # Completion line (with colored backend name)
     model_display = f" ({model})" if model else ""
     reason_display = ""
     if selection_reason:
         label = REASON_LABELS.get(selection_reason, selection_reason)
         reason_display = f" [{label}]"
     console.print(
-        f"  [green]\u2713[/green] Completed via {backend_name.title()}{model_display} "
+        f"  [green]\u2713[/green] Completed via {colored_backend(backend_name)}{model_display} "
         f"in {duration:.1f}s{reason_display}"
     )
 
@@ -53,6 +57,17 @@ def show_footer(
             cost_str += f" (saved ${savings:.2f} vs {savings_vs.title()})"
         console.print(cost_str)
 
+        # Cost comparison line (dim, only when alternatives exist)
+        if alternative_costs:
+            alts = []
+            for alt_name, alt_cost in sorted(alternative_costs.items(), key=lambda x: x[1]):
+                diff = alt_cost - cost_usd
+                if abs(diff) > 0.0001:
+                    sign = "+" if diff > 0 else ""
+                    alts.append(f"{alt_name.title()} ${alt_cost:.4f} ({sign}${diff:.4f})")
+            if alts:
+                console.print(f"    [dim]vs. {' \u00b7 '.join(alts)}[/dim]")
+
     # Audit line (merge with review hint when there are file changes)
     session_short = session_id[:8] if len(session_id) >= 8 else session_id
     if has_file_changes:
@@ -64,3 +79,11 @@ def show_footer(
         console.print(f"  [green]\u2713[/green] Audit logged (session {session_short}...)")
 
     console.print(f"[dim]{separator}[/dim]")
+
+    # Terminal bell for completed tasks (configurable)
+    from ..config import load_config
+
+    config = load_config()
+    if config.display.sound:
+        sys.stdout.write("\a")
+        sys.stdout.flush()

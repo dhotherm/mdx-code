@@ -31,6 +31,8 @@ It wraps them with orchestration. Don't create tools or agent loops.
 - `mdx policy check <files>` — Check files against policies
 - `mdx compliance` — Regulatory compliance matrix
 - `mdx hook install` — Git pre-commit hook
+- `mdx replay` — Replay last task output (no re-execution)
+- `mdx undo` — Revert last backend change (with confirmation)
 - `mdx mcp status` — MCP server availability
 - `mdx mcp config` — Generate MCP client config
 

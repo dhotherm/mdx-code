@@ -86,15 +86,24 @@ def _show_routing_line(
     backend_name: str,
     reason: str,
     user_specified: bool = False,
+    scores: dict[str, float] | None = None,
+    num_backends: int = 0,
 ) -> None:
-    """Show a one-line routing decision."""
-    from .backends.discovery import KNOWN_CLIS
+    """Show a one-line routing decision with optional score context."""
+    from .output.colors import colored_backend
 
-    display_name = KNOWN_CLIS.get(backend_name, backend_name.title())
     if user_specified:
-        console.print(f"  [dim]\u2192 Using {display_name} (user specified)[/dim]")
+        console.print(f"  [dim]\u2192 Using {colored_backend(backend_name)} (user specified)[/dim]")
     else:
-        console.print(f"  [dim]\u2192 Routing to {display_name} \u2014 {reason}[/dim]")
+        console.print(f"  [dim]\u2192 Routing to {colored_backend(backend_name)} \u2014 {reason}[/dim]")
+        # Show score comparison on second dim line
+        if scores and len(scores) > 1:
+            parts = []
+            for name, score in sorted(scores.items(), key=lambda x: x[1], reverse=True):
+                marker = "\u25cf" if name == backend_name else "\u25cb"
+                parts.append(f"{marker} {name.title()} {score:.2f}")
+            score_line = "  ".join(parts)
+            console.print(f"    [dim]{score_line}[/dim]")
 
 
 @app.callback()
@@ -238,7 +247,13 @@ async def _execute_task(
 
     # Show routing decision
     if config.display.show_routing_reason:
-        _show_routing_line(backend.name, routing_reason, user_specified=user_specified)
+        _show_routing_line(
+            backend.name,
+            routing_reason,
+            user_specified=user_specified,
+            scores=routing_decision.scores if routing_decision else None,
+            num_backends=len(backends_available),
+        )
 
     cwd = Path.cwd()
     cb = get_circuit_breaker()
@@ -339,7 +354,11 @@ async def _execute_task(
         write_audit_entry(entry)
 
     # Save last task info for `mdx review --last`
-    _save_last_task(task, backend.name, cwd)
+    _save_last_task(task, backend.name, cwd, full_output)
+
+    # Check if there were file changes (for footer display)
+    last_task_data = _load_last_task()
+    has_file_changes = bool(last_task_data and last_task_data.get("files_modified"))
 
     # Check if there were file changes (for footer display)
     last_task_data = _load_last_task()
@@ -400,6 +419,7 @@ async def _execute_task(
             savings_vs=savings_vs,
             selection_reason=selection_reason,
             has_file_changes=has_file_changes,
+            alternative_costs=alternative_costs,
         )
 
 
@@ -550,11 +570,13 @@ def cost(
     lines.append("")
 
     if by_backend:
+        from .output.colors import colored_backend
+
         lines.append("  By backend:")
         for name, amount in sorted(by_backend.items(), key=lambda x: x[1], reverse=True):
             pct = (amount / total * 100) if total > 0 else 0
             lines.append(
-                f"    {name.title():<10} ${amount:>8.4f} ({pct:>4.0f}%)"
+                f"    {colored_backend(name):<22} ${amount:>8.4f} ({pct:>4.0f}%)"
             )
         lines.append("")
 
@@ -716,6 +738,8 @@ def audit(
     table.add_column("Cost")
     table.add_column("Reason", style="dim")
 
+    from .output.colors import colored_backend
+
     for entry in entries:
         ts = entry.get("timestamp", "")[:19]
         backend_name = entry.get("backend", "?")
@@ -728,7 +752,7 @@ def audit(
         reason = entry.get("routing_reason") or entry.get("backend_selection_reason", "")
 
         table.add_row(
-            ts, backend_name, task, dur,
+            ts, colored_backend(backend_name), task, dur,
             f"[{status_style}]{status_val}[/{status_style}]",
             cost_str, reason,
         )
@@ -737,8 +761,8 @@ def audit(
     console.print()
 
 
-def _save_last_task(task: str, backend_name: str, cwd: Path) -> None:
-    """Save last task info for `mdx review --last`."""
+def _save_last_task(task: str, backend_name: str, cwd: Path, output: str = "") -> None:
+    """Save last task info for `mdx review --last` and `mdx replay`."""
     try:
         diff = ""
         files_modified: list[str] = []
@@ -773,6 +797,7 @@ def _save_last_task(task: str, backend_name: str, cwd: Path) -> None:
             "backend": backend_name,
             "files_modified": files_modified,
             "diff": diff,
+            "output": output,
             "working_directory": str(cwd),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -790,6 +815,103 @@ def _load_last_task() -> Optional[dict]:
         return json.loads(LAST_TASK_PATH.read_text())
     except (json.JSONDecodeError, OSError):
         return None
+
+
+@app.command()
+def replay() -> None:
+    """Replay the last task's output without re-executing."""
+    from rich.markdown import Markdown
+
+    from .output.streamer import _looks_like_markdown
+
+    task_data = _load_last_task()
+    if not task_data or not task_data.get("output"):
+        console.print("[dim]No recent task output to replay.[/dim]")
+        console.print("Run a task first: [bold]mdx \"your task\"[/bold]")
+        raise typer.Exit(1)
+
+    task = task_data.get("task", "unknown")
+    backend = task_data.get("backend", "unknown")
+    timestamp = task_data.get("timestamp", "")[:19]
+
+    console.print()
+    console.print(f"  [dim]Replaying: \"{task}\" via {backend.title()} at {timestamp}[/dim]")
+    console.print()
+
+    output = task_data["output"]
+    if _looks_like_markdown(output):
+        console.print(Markdown(output.strip()))
+    else:
+        console.print(output, end="")
+
+    console.print()
+
+
+@app.command()
+def undo() -> None:
+    """Undo the last change made by a backend."""
+    task_data = _load_last_task()
+    if not task_data:
+        console.print("[dim]No recent task to undo.[/dim]")
+        raise typer.Exit(1)
+
+    task = task_data.get("task", "unknown")
+    backend = task_data.get("backend", "unknown")
+    files = task_data.get("files_modified", [])
+    cwd = task_data.get("working_directory", str(Path.cwd()))
+
+    if not files:
+        console.print("[dim]No file changes detected in the last task.[/dim]")
+        raise typer.Exit(1)
+
+    console.print()
+    console.print(f"  [bold]Undo last task:[/bold] \"{task}\" via {backend.title()}")
+    console.print(f"  Files affected: {len(files)}")
+    for f in files[:5]:
+        console.print(f"    {f}")
+    if len(files) > 5:
+        console.print(f"    [dim]...and {len(files) - 5} more[/dim]")
+    console.print()
+
+    confirm = console.input("  [bold yellow]Revert these changes?[/bold yellow] [y/N] ").strip().lower()
+    if confirm != "y":
+        console.print("  [dim]Undo cancelled.[/dim]")
+        raise typer.Exit(0)
+
+    # Determine undo strategy
+    try:
+        # Check if there are uncommitted changes (backend didn't auto-commit)
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, cwd=cwd, timeout=10,
+        )
+        uncommitted = [f for f in result.stdout.strip().splitlines() if f]
+
+        if uncommitted:
+            # Uncommitted changes — just git checkout the files
+            subprocess.run(
+                ["git", "checkout", "HEAD", "--"] + files,
+                capture_output=True, text=True, cwd=cwd, timeout=10,
+            )
+            console.print("  [green]\u2713[/green] Reverted uncommitted changes.")
+        else:
+            # Changes were committed — revert the last commit
+            result = subprocess.run(
+                ["git", "revert", "HEAD", "--no-edit"],
+                capture_output=True, text=True, cwd=cwd, timeout=30,
+            )
+            if result.returncode == 0:
+                console.print("  [green]\u2713[/green] Reverted last commit.")
+            else:
+                console.print(f"  [red]\u2717[/red] Git revert failed: {result.stderr.strip()[:80]}")
+                console.print("  [dim]Try manually: git revert HEAD[/dim]")
+                raise typer.Exit(1)
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        console.print(f"  [red]\u2717[/red] Could not undo: {e}")
+        raise typer.Exit(1)
+
+    console.print()
 
 
 def _get_git_diff(diff_ref: str) -> Optional[str]:

@@ -41,6 +41,7 @@ class DisplayConfig(BaseModel):
     show_footer: bool = True
     show_routing_reason: bool = True
     verbose: bool = False
+    sound: bool = True  # Terminal bell on task completion
 
 
 class MdxConfig(BaseModel):
