@@ -75,11 +75,11 @@ class GeminiBackend(Backend):
         """
         Execute a task via Gemini CLI and stream output.
 
-        Spawns: gemini "task"
+        Spawns: gemini -p "task"
         Streams stdout line-by-line as it arrives.
         """
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, task,
+            self.cli_command, "-p", task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -131,7 +131,7 @@ class GeminiBackend(Backend):
         exit_code = 0
 
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, task,
+            self.cli_command, "-p", task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),

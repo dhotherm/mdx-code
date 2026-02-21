@@ -107,6 +107,18 @@ def main(
         console.print(f"MDx Code v{__version__}")
         raise typer.Exit()
 
+    # If no subcommand is being invoked, show banner + interactive prompt
+    if ctx.invoked_subcommand is None:
+        from .backends.discovery import discover_backends
+
+        backends = asyncio.run(discover_backends())
+        show_banner(backends)
+
+        task_input = console.input("[bold]What do you want to work on?[/bold] \u2192 ")
+        if task_input.strip():
+            asyncio.run(_execute_task(task_input.strip()))
+        raise typer.Exit()
+
 
 @app.command(hidden=True)
 def run(
@@ -539,13 +551,10 @@ def cost(
 
     if by_backend:
         lines.append("  By backend:")
-        max_cost = max(by_backend.values()) if by_backend else 1
         for name, amount in sorted(by_backend.items(), key=lambda x: x[1], reverse=True):
             pct = (amount / total * 100) if total > 0 else 0
-            bar_len = int((amount / max_cost) * 20) if max_cost > 0 else 0
-            bar = "\u2588" * bar_len + "\u2591" * (20 - bar_len)
             lines.append(
-                f"    {name.title():<10} ${amount:>7.2f} ({pct:>4.0f}%)  {bar}"
+                f"    {name.title():<10} ${amount:>8.4f} ({pct:>4.0f}%)"
             )
         lines.append("")
 
@@ -563,7 +572,7 @@ def cost(
             if len(summary) > 35:
                 summary = summary[:32] + "..."
             c = entry.get("cost_usd", 0) or 0
-            lines.append(f"    {summary:<38} ${c:.2f}")
+            lines.append(f"    {summary:<38} ${c:.4f}")
         lines.append("")
 
     if not by_backend and not top:
@@ -731,23 +740,33 @@ def audit(
 def _save_last_task(task: str, backend_name: str, cwd: Path) -> None:
     """Save last task info for `mdx review --last`."""
     try:
-        # Capture git diff of changes made
         diff = ""
         files_modified: list[str] = []
-        try:
-            result = subprocess.run(
-                ["git", "diff", "HEAD"],
-                capture_output=True, text=True, cwd=str(cwd), timeout=10,
-            )
-            diff = result.stdout
-            # Also check for untracked files
-            result2 = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD"],
-                capture_output=True, text=True, cwd=str(cwd), timeout=10,
-            )
-            files_modified = [f for f in result2.stdout.strip().splitlines() if f]
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
+
+        # Try multiple diff strategies — backends may or may not auto-commit
+        diff_commands = [
+            ["git", "diff", "HEAD"],           # Uncommitted changes
+            ["git", "diff", "HEAD~1"],          # Last commit (auto-committed by backend)
+            ["git", "diff", "--cached"],        # Staged changes
+        ]
+
+        for cmd in diff_commands:
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, cwd=str(cwd), timeout=10,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    diff = result.stdout
+                    # Get file names from this same ref
+                    name_cmd = cmd.copy()
+                    name_cmd.insert(2, "--name-only")
+                    result2 = subprocess.run(
+                        name_cmd, capture_output=True, text=True, cwd=str(cwd), timeout=10,
+                    )
+                    files_modified = [f for f in result2.stdout.strip().splitlines() if f]
+                    break
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                continue
 
         data = {
             "task": task,
@@ -793,13 +812,13 @@ def review(
     last: bool = typer.Option(False, "--last", help="Review the last change MDx made"),
     diff: Optional[str] = typer.Option(None, "--diff", help="Review a git diff (e.g., HEAD~1, main..feature)"),
     staged: bool = typer.Option(False, "--staged", help="Review staged git changes (for pre-commit)"),
-    backends: Optional[str] = typer.Option(
-        None, "--backends", help="Comma-separated backends to use (e.g., 'claude,codex')"
+    backend: Optional[str] = typer.Option(
+        None, "--backend", "-b", help="Comma-separated backends (e.g., 'claude,codex')"
     ),
     format: str = typer.Option("rich", "--format", "-f", help="Output format: rich or json"),
 ) -> None:
     """Run adversarial multi-model code review."""
-    asyncio.run(_run_review(paths, last, diff, staged, backends, format))
+    asyncio.run(_run_review(paths, last, diff, staged, backend, format))
 
 
 async def _run_review(
@@ -807,7 +826,7 @@ async def _run_review(
     last: bool,
     diff_ref: Optional[str],
     staged: bool,
-    backends_str: Optional[str],
+    backend_str: Optional[str],
     format: str,
 ) -> None:
     """Execute the adversarial review."""
@@ -818,8 +837,8 @@ async def _run_review(
 
     # Parse backend list
     backend_names: Optional[list[str]] = None
-    if backends_str:
-        backend_names = [b.strip() for b in backends_str.split(",") if b.strip()]
+    if backend_str:
+        backend_names = [b.strip() for b in backend_str.split(",") if b.strip()]
 
     # Handle --staged: review staged git changes
     if staged:
@@ -923,6 +942,45 @@ async def _run_review(
             policy_evaluation=policy_eval,
         )
         write_audit_entry(entry)
+
+
+@app.command()
+def update() -> None:
+    """Update MDx Code and all installed backends."""
+    import shutil
+
+    console.print()
+    console.print("  [bold]Updating MDx Code and backends...[/bold]")
+    console.print()
+
+    backend_updates = {
+        "claude": ("claude", ["claude", "update"]),
+        "codex": ("codex", ["npm", "update", "-g", "@openai/codex"]),
+        "gemini": ("gemini", ["npm", "update", "-g", "@google/gemini-cli"]),
+    }
+
+    for name, (binary, cmd) in backend_updates.items():
+        if shutil.which(binary):
+            console.print(f"  Updating {name.title()}...", end=" ")
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=120,
+                )
+                if result.returncode == 0:
+                    console.print("[green]\u2713[/green]")
+                else:
+                    stderr = result.stderr.strip()[:60] if result.stderr else "unknown error"
+                    console.print(f"[yellow]\u26a0 {stderr}[/yellow]")
+            except subprocess.TimeoutExpired:
+                console.print("[red]\u2717 timed out[/red]")
+            except (FileNotFoundError, OSError) as e:
+                console.print(f"[red]\u2717 {e}[/red]")
+        else:
+            console.print(f"  {name.title()}: [dim]not installed[/dim]")
+
+    console.print()
+    console.print(f"  MDx Code: v{__version__}")
+    console.print()
 
 
 # --- Policy commands ---
