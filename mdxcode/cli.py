@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import click
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -22,12 +23,35 @@ from .config import MDX_DIR, load_config
 LAST_TASK_PATH = MDX_DIR / "last_task.json"
 
 console = Console()
+
+
+class TaskGroup(typer.core.TyperGroup):
+    """Custom Click Group that treats unknown commands as task strings."""
+
+    def resolve_command(self, ctx, args):
+        """Override to catch unknown commands and treat them as tasks."""
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError:
+            # Unknown command — treat the entire args list as a task string
+            return "run", args
+
+    def parse_args(self, ctx, args):
+        """Ensure unknown args don't cause errors."""
+        # If the first arg looks like a task (not a known command, not a flag),
+        # wrap it so Click doesn't reject it
+        if args and not args[0].startswith("-") and args[0] not in self.commands:
+            # Inject "run" as the subcommand, pass everything else as args
+            args = ["run"] + args
+        return super().parse_args(ctx, args)
+
+
 app = typer.Typer(
     name="mdx",
     help="MDx Code — The AI Engineering Manager",
     add_completion=False,
     invoke_without_command=True,
-    context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
+    cls=TaskGroup,
 )
 
 policy_app = typer.Typer(help="Policy management commands")
@@ -77,50 +101,46 @@ def _show_routing_line(
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-V", help="Show version"),
-    backend: Optional[str] = typer.Option(
-        None, "--backend", "-b", help="Force a specific backend (claude, codex, gemini)"
-    ),
-    strategy: Optional[str] = typer.Option(
-        None, "--strategy", "-s", help="Routing strategy (cost, quality, balanced)"
-    ),
 ) -> None:
     """MDx Code — The AI Engineering Manager."""
     if version:
         console.print(f"MDx Code v{__version__}")
         raise typer.Exit()
 
-    # If a subcommand is being invoked, let it handle things
-    if ctx.invoked_subcommand is not None:
+
+@app.command(hidden=True)
+def run(
+    ctx: typer.Context,
+    task_parts: Optional[list[str]] = typer.Argument(None, help="Task to execute"),
+    backend: Optional[str] = typer.Option(
+        None, "--backend", "-b", help="Force a specific backend"
+    ),
+    strategy: Optional[str] = typer.Option(
+        None, "--strategy", "-s", help="Routing strategy"
+    ),
+) -> None:
+    """Execute a task (hidden command -- invoked automatically)."""
+    if not task_parts:
+        # No task provided -- show banner + interactive prompt
+        from .backends.discovery import discover_backends
+
+        backends = asyncio.run(discover_backends())
+        show_banner(backends)
+
+        task_input = console.input("[bold]What do you want to work on?[/bold] \u2192 ")
+        if task_input.strip():
+            asyncio.run(_execute_task(task_input.strip()))
         return
+
+    task = " ".join(task_parts)
 
     # Normalize strategy aliases
     strategy_map = {"cost": "cost_optimized", "quality": "quality_first"}
     resolved_strategy = strategy_map.get(strategy, strategy) if strategy else None
 
-    # Check for extra args — these form the task string
-    # e.g., mdx "fix the bug" or mdx fix the bug
-    if ctx.args:
-        task = " ".join(ctx.args)
-        asyncio.run(
-            _execute_task(task, backend_override=backend, strategy_override=resolved_strategy)
-        )
-        raise typer.Exit()
-
-    # No task, no subcommand — interactive mode
-    from .backends.discovery import discover_backends
-
-    backends = asyncio.run(discover_backends())
-    show_banner(backends)
-
-    task_input = console.input("[bold]What do you want to work on?[/bold] \u2192 ")
-    if task_input.strip():
-        asyncio.run(
-            _execute_task(
-                task_input.strip(),
-                backend_override=backend,
-                strategy_override=resolved_strategy,
-            )
-        )
+    asyncio.run(
+        _execute_task(task, backend_override=backend, strategy_override=resolved_strategy)
+    )
 
 
 async def _execute_task(
