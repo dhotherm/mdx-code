@@ -82,6 +82,9 @@ app.add_typer(policy_app, name="policy")
 hook_app = typer.Typer(help="Git hook management commands")
 app.add_typer(hook_app, name="hook")
 
+mcp_app = typer.Typer(help="MCP server management commands")
+app.add_typer(mcp_app, name="mcp")
+
 
 def show_banner(backends: Optional[list] = None) -> None:
     """Display the MDx Code banner."""
@@ -1156,3 +1159,153 @@ def hook_check() -> None:
         raise typer.Exit(1)
 
     raise typer.Exit(0)
+
+
+# --- MCP commands ---
+
+MCP_SERVERS = {
+    "governance": {
+        "module": "mcp_servers.governance.server",
+        "entry_point": "mdx-governance-server",
+        "description": "Policy checking and enforcement",
+    },
+    "audit": {
+        "module": "mcp_servers.audit.server",
+        "entry_point": "mdx-audit-server",
+        "description": "Immutable audit trail access",
+    },
+    "cost": {
+        "module": "mcp_servers.cost.server",
+        "entry_point": "mdx-cost-server",
+        "description": "Spending tracking and reporting",
+    },
+}
+
+
+@mcp_app.command("status")
+def mcp_status() -> None:
+    """Show available MCP servers and their status."""
+    # Check if mcp package is importable
+    mcp_available = False
+    try:
+        import mcp  # noqa: F401
+
+        mcp_available = True
+    except ImportError:
+        pass
+
+    console.print()
+    console.print("  [bold]MDx Code MCP Servers[/bold]")
+    console.print()
+
+    if not mcp_available:
+        console.print("  [red]MCP package not installed.[/red]")
+        console.print('  Install with: [bold]pip install -e ".[mcp]"[/bold]')
+        console.print()
+        return
+
+    console.print("  [green]MCP package installed.[/green]")
+    console.print()
+
+    for name, info in MCP_SERVERS.items():
+        module = info["module"]
+        entry = info["entry_point"]
+        desc = info["description"]
+
+        # Check if server module is importable
+        try:
+            __import__(module)
+            console.print(f"  [green]\u2713[/green] {name:<14} {desc}")
+            console.print(f"    [dim]Run: {entry}[/dim]")
+        except ImportError as e:
+            console.print(f"  [red]\u2717[/red] {name:<14} {desc}")
+            console.print(f"    [dim]Import error: {e}[/dim]")
+
+    console.print()
+    console.print("  Configure in your MCP client with: [bold]mdx mcp config[/bold]")
+    console.print()
+
+
+@mcp_app.command("config")
+def mcp_config(
+    client: str = typer.Option(
+        "claude-code",
+        "--client",
+        "-c",
+        help="Target client: claude-code, cursor, or codex",
+    ),
+) -> None:
+    """Generate MCP server configuration for your client."""
+    console.print()
+
+    if client == "claude-code":
+        config = {
+            "mcpServers": {
+                "mdx-governance": {
+                    "command": "mdx-governance-server",
+                    "args": [],
+                },
+                "mdx-audit": {
+                    "command": "mdx-audit-server",
+                    "args": [],
+                },
+                "mdx-cost": {
+                    "command": "mdx-cost-server",
+                    "args": [],
+                },
+            }
+        }
+        console.print("  [bold]Claude Code[/bold] \u2014 add to [dim]~/.claude.json[/dim]:")
+        console.print()
+        console.print(json.dumps(config, indent=2))
+
+    elif client == "cursor":
+        config = {
+            "mcpServers": {
+                "mdx-governance": {
+                    "command": "mdx-governance-server",
+                    "args": [],
+                },
+                "mdx-audit": {
+                    "command": "mdx-audit-server",
+                    "args": [],
+                },
+                "mdx-cost": {
+                    "command": "mdx-cost-server",
+                    "args": [],
+                },
+            }
+        }
+        console.print("  [bold]Cursor[/bold] \u2014 add to [dim].cursor/mcp.json[/dim]:")
+        console.print()
+        console.print(json.dumps(config, indent=2))
+
+    elif client == "codex":
+        config = {
+            "mcpServers": {
+                "mdx-governance": {
+                    "command": "mdx-governance-server",
+                    "args": [],
+                },
+                "mdx-audit": {
+                    "command": "mdx-audit-server",
+                    "args": [],
+                },
+                "mdx-cost": {
+                    "command": "mdx-cost-server",
+                    "args": [],
+                },
+            }
+        }
+        console.print("  [bold]Codex CLI[/bold] \u2014 add to [dim]codex config[/dim]:")
+        console.print()
+        console.print(json.dumps(config, indent=2))
+
+    else:
+        console.print(f"  [red]Unknown client: {client}[/red]")
+        console.print("  Supported: claude-code, cursor, codex")
+        return
+
+    console.print()
+    console.print("  [dim]Ensure MDx Code is installed: pip install -e \".[mcp]\"[/dim]")
+    console.print()

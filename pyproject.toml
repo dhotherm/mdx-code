@@ -28,13 +28,17 @@ dev = [
     "black>=24.0.0",
     "mypy>=1.8.0",
 ]
+mcp = ["mcp>=1.0.0"]
 
 [project.scripts]
 mdx = "mdxcode.cli:app"
+mdx-governance-server = "mcp_servers.governance.server:main"
+mdx-audit-server = "mcp_servers.audit.server:main"
+mdx-cost-server = "mcp_servers.cost.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mdxcode*"]
+include = ["mdxcode*", "mcp_servers*"]
 
 [tool.black]
 line-length = 100
