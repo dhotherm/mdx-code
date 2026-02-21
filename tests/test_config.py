@@ -27,7 +27,7 @@ class TestMdxConfig:
         assert config.display.verbose is False
 
     def test_valid_backends(self):
-        for backend in ("auto", "claude", "codex", "gemini"):
+        for backend in ("auto", "claude", "codex", "gemini", "opencode"):
             config = MdxConfig(default_backend=backend)
             assert config.default_backend == backend
 

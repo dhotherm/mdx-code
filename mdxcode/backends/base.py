@@ -17,6 +17,15 @@ class BackendInfo:
 
 
 @dataclass
+class HealthStatus:
+    """Result of a backend health check."""
+
+    healthy: bool
+    latency_ms: int
+    details: str
+
+
+@dataclass
 class TaskResult:
     """Result of a task execution."""
 
@@ -77,5 +86,15 @@ class Backend(ABC):
 
         Convenience method that calls execute() internally,
         streams to display, and returns the complete TaskResult.
+        """
+        ...
+
+    @abstractmethod
+    async def health_check(self) -> HealthStatus:
+        """
+        Verify the backend is responsive.
+
+        Lightweight check — verify the CLI responds to a version command,
+        not run a full task.
         """
         ...

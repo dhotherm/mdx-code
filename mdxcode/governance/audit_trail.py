@@ -32,6 +32,8 @@ class AuditEntry(BaseModel):
     cost_usd: Optional[float] = None
     exit_code: int = 0
     status: str = "success"
+    backend_selection_reason: str = ""
+    backends_available: list[str] = Field(default_factory=list)
 
 
 def compute_chain_hash(entry_dict: dict, previous_hash: str) -> str:

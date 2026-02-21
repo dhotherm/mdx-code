@@ -1,12 +1,15 @@
 """Tests for backend discovery."""
 
-import shutil
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from mdxcode.backends.base import BackendInfo
+from mdxcode.backends.circuit_breaker import reset_circuit_breaker
 from mdxcode.backends.claude import ClaudeBackend
+from mdxcode.backends.codex import CodexBackend
+from mdxcode.backends.gemini import GeminiBackend
+from mdxcode.backends.opencode import OpenCodeBackend
 from mdxcode.backends.discovery import discover_backends, get_best_backend
 
 
@@ -71,19 +74,33 @@ class TestClaudeBackend:
 class TestDiscovery:
     """Tests for backend discovery."""
 
+    def _make_info(self, name, healthy=True):
+        return BackendInfo(
+            name=name,
+            version="1.0.0" if healthy else "not installed",
+            authenticated=healthy,
+            healthy=healthy,
+        )
+
     @pytest.mark.asyncio
     async def test_discovers_claude(self):
         with (
-            patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=True),
             patch.object(
-                ClaudeBackend,
-                "get_info",
-                new_callable=AsyncMock,
-                return_value=BackendInfo(
-                    name="claude", version="1.0.0", authenticated=True, healthy=True
-                ),
+                ClaudeBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("claude"),
             ),
-            patch("shutil.which", return_value=None),
+            patch.object(
+                CodexBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("codex", healthy=False),
+            ),
+            patch.object(
+                GeminiBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("gemini", healthy=False),
+            ),
+            patch.object(
+                OpenCodeBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("opencode", healthy=False),
+            ),
         ):
             backends = await discover_backends()
             claude_backends = [b for b in backends if b.name == "claude"]
@@ -91,42 +108,51 @@ class TestDiscovery:
             assert claude_backends[0].healthy is True
 
     @pytest.mark.asyncio
-    async def test_discovers_multiple_clis(self):
-        def mock_which(name):
-            return f"/usr/local/bin/{name}" if name in ("claude", "codex") else None
-
+    async def test_discovers_multiple_backends(self):
         with (
-            patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=True),
             patch.object(
-                ClaudeBackend,
-                "get_info",
-                new_callable=AsyncMock,
-                return_value=BackendInfo(
-                    name="claude", version="1.0.0", authenticated=True, healthy=True
-                ),
+                ClaudeBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("claude"),
             ),
-            patch("mdxcode.backends.discovery.shutil.which", side_effect=mock_which),
+            patch.object(
+                CodexBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("codex"),
+            ),
+            patch.object(
+                GeminiBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("gemini", healthy=False),
+            ),
+            patch.object(
+                OpenCodeBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("opencode", healthy=False),
+            ),
         ):
             backends = await discover_backends()
             names = [b.name for b in backends]
             assert "claude" in names
             assert "codex" in names
+            assert "gemini" in names
+            assert "opencode" in names
 
     @pytest.mark.asyncio
-    async def test_no_backends_found(self):
+    async def test_no_backends_healthy(self):
         with (
             patch.object(
-                ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=False
+                ClaudeBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("claude", healthy=False),
             ),
             patch.object(
-                ClaudeBackend,
-                "get_info",
-                new_callable=AsyncMock,
-                return_value=BackendInfo(
-                    name="claude", version="not installed", authenticated=False, healthy=False
-                ),
+                CodexBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("codex", healthy=False),
             ),
-            patch("mdxcode.backends.discovery.shutil.which", return_value=None),
+            patch.object(
+                GeminiBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("gemini", healthy=False),
+            ),
+            patch.object(
+                OpenCodeBackend, "get_info", new_callable=AsyncMock,
+                return_value=self._make_info("opencode", healthy=False),
+            ),
         ):
             backends = await discover_backends()
             assert all(not b.healthy for b in backends)
@@ -135,24 +161,85 @@ class TestDiscovery:
 class TestGetBestBackend:
     """Tests for getting the best available backend."""
 
+    def setup_method(self):
+        reset_circuit_breaker()
+
     @pytest.mark.asyncio
     async def test_returns_claude_when_available(self):
         with patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=True):
-            backend = await get_best_backend("auto")
+            backend, reason = await get_best_backend("auto")
             assert backend is not None
             assert backend.name == "claude"
+            assert reason == "auto_default"
 
     @pytest.mark.asyncio
     async def test_returns_none_when_unavailable(self):
-        with patch.object(
-            ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=False
+        with (
+            patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=False),
+            patch.object(CodexBackend, "is_available", new_callable=AsyncMock, return_value=False),
+            patch.object(GeminiBackend, "is_available", new_callable=AsyncMock, return_value=False),
         ):
-            backend = await get_best_backend("auto")
+            backend, reason = await get_best_backend("auto")
             assert backend is None
 
     @pytest.mark.asyncio
     async def test_explicit_claude_preference(self):
         with patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=True):
-            backend = await get_best_backend("claude")
+            backend, reason = await get_best_backend("claude")
             assert backend is not None
             assert backend.name == "claude"
+            assert reason == "user_specified"
+
+    @pytest.mark.asyncio
+    async def test_explicit_codex_preference(self):
+        with patch.object(CodexBackend, "is_available", new_callable=AsyncMock, return_value=True):
+            backend, reason = await get_best_backend("codex")
+            assert backend is not None
+            assert backend.name == "codex"
+            assert reason == "user_specified"
+
+    @pytest.mark.asyncio
+    async def test_explicit_gemini_preference(self):
+        with patch.object(GeminiBackend, "is_available", new_callable=AsyncMock, return_value=True):
+            backend, reason = await get_best_backend("gemini")
+            assert backend is not None
+            assert backend.name == "gemini"
+            assert reason == "user_specified"
+
+    @pytest.mark.asyncio
+    async def test_opencode_not_executable(self):
+        with patch.object(OpenCodeBackend, "is_available", new_callable=AsyncMock, return_value=True):
+            backend, reason = await get_best_backend("opencode")
+            assert backend is None
+            assert reason == "user_specified"
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_codex_when_claude_unavailable(self):
+        with (
+            patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=False),
+            patch.object(CodexBackend, "is_available", new_callable=AsyncMock, return_value=True),
+        ):
+            backend, reason = await get_best_backend("auto")
+            assert backend is not None
+            assert backend.name == "codex"
+            assert reason == "auto_default"
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_fallback(self):
+        from mdxcode.backends.circuit_breaker import get_circuit_breaker
+
+        cb = get_circuit_breaker()
+        for _ in range(3):
+            cb.record_failure("claude")
+
+        with (
+            patch.object(ClaudeBackend, "is_available", new_callable=AsyncMock, return_value=True),
+            patch.object(CodexBackend, "is_available", new_callable=AsyncMock, return_value=True),
+        ):
+            backend, reason = await get_best_backend("auto")
+            assert backend is not None
+            assert backend.name == "codex"
+            assert reason == "circuit_breaker_fallback"
+
+    def teardown_method(self):
+        reset_circuit_breaker()

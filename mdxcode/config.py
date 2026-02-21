@@ -47,7 +47,9 @@ class MdxConfig(BaseModel):
     """Top-level MDx Code configuration."""
 
     version: str = "2.0"
-    default_backend: str = Field(default="auto", pattern=r"^(auto|claude|codex|gemini)$")
+    default_backend: str = Field(
+        default="auto", pattern=r"^(auto|claude|codex|gemini|opencode)$"
+    )
     routing_strategy: str = Field(
         default="balanced", pattern=r"^(balanced|cost_optimized|quality_first)$"
     )

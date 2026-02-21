@@ -7,6 +7,12 @@ from rich.text import Text
 
 console = Console()
 
+REASON_LABELS = {
+    "user_specified": "user selected",
+    "auto_default": "auto-detected",
+    "circuit_breaker_fallback": "fallback (circuit breaker)",
+}
+
 
 def show_footer(
     backend_name: str,
@@ -14,6 +20,7 @@ def show_footer(
     duration: float,
     session_id: str,
     cost_usd: Optional[float] = None,
+    selection_reason: Optional[str] = None,
 ) -> None:
     """Display the MDx Code footer after task completion."""
     width = min(console.width, 52)
@@ -24,9 +31,13 @@ def show_footer(
 
     # Completion line
     model_display = f" ({model})" if model else ""
+    reason_display = ""
+    if selection_reason:
+        label = REASON_LABELS.get(selection_reason, selection_reason)
+        reason_display = f" [{label}]"
     console.print(
         f"  [green]\u2713[/green] Completed via {backend_name.title()}{model_display} "
-        f"in {duration:.1f}s"
+        f"in {duration:.1f}s{reason_display}"
     )
 
     # Cost if available

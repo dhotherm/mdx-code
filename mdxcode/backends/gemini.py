@@ -1,4 +1,4 @@
-"""Claude Code backend adapter."""
+"""Gemini CLI backend adapter."""
 
 import asyncio
 import json
@@ -10,26 +10,26 @@ from typing import AsyncIterator, Optional
 from .base import Backend, BackendInfo, HealthStatus, TaskResult
 
 
-class ClaudeBackend(Backend):
-    """Adapter for Claude Code CLI."""
+class GeminiBackend(Backend):
+    """Adapter for Gemini CLI (Google)."""
 
     def __init__(self, timeout: int = 300):
         self._timeout = timeout
 
     @property
     def name(self) -> str:
-        return "claude"
+        return "gemini"
 
     @property
     def cli_command(self) -> str:
-        return "claude"
+        return "gemini"
 
     async def is_available(self) -> bool:
-        """Check if claude CLI is installed and in PATH."""
+        """Check if gemini CLI is installed and in PATH."""
         return shutil.which(self.cli_command) is not None
 
     async def get_info(self) -> BackendInfo:
-        """Get Claude Code version and auth status."""
+        """Get Gemini CLI version and auth status."""
         if not await self.is_available():
             return BackendInfo(
                 name=self.name, version="not installed", authenticated=False, healthy=False
@@ -46,7 +46,7 @@ class ClaudeBackend(Backend):
         )
 
     async def _get_version(self) -> str:
-        """Get Claude Code version string."""
+        """Get Gemini CLI version string."""
         try:
             proc = await asyncio.create_subprocess_exec(
                 self.cli_command, "--version",
@@ -59,11 +59,7 @@ class ClaudeBackend(Backend):
             return "unknown"
 
     async def _check_auth(self) -> bool:
-        """Check if Claude Code is authenticated."""
-        # Claude Code stores auth state internally.
-        # A lightweight check: run with --version; if it works, CLI is functional.
-        # Full auth check would require attempting a real request.
-        # For now, consider it authenticated if the CLI is available and responds.
+        """Check if Gemini CLI is authenticated (Google Cloud credentials)."""
         try:
             proc = await asyncio.create_subprocess_exec(
                 self.cli_command, "--version",
@@ -77,13 +73,13 @@ class ClaudeBackend(Backend):
 
     async def execute(self, task: str, cwd: Path) -> AsyncIterator[str]:
         """
-        Execute a task via Claude Code and stream output.
+        Execute a task via Gemini CLI and stream output.
 
-        Spawns: claude -p "task" --output-format json
+        Spawns: gemini "task"
         Streams stdout line-by-line as it arrives.
         """
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task, "--output-format", "json",
+            self.cli_command, task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -105,16 +101,15 @@ class ClaudeBackend(Backend):
             stderr_output = await proc.stderr.read()
             stderr_text = stderr_output.decode(errors="replace").strip()
             if stderr_text:
-                if "auth" in stderr_text.lower() or "login" in stderr_text.lower():
+                if any(kw in stderr_text.lower() for kw in ("auth", "login", "credential")):
                     yield (
                         "\n[MDx Code] Authentication required. "
-                        "Run `claude` directly to authenticate.\n"
+                        "Set up Google Cloud credentials for Gemini CLI.\n"
                     )
                 else:
                     yield f"\n[MDx Code] Backend error (exit {proc.returncode}): {stderr_text}\n"
 
-    # Make execute() return an AsyncIterator properly
-    execute.__doc__ = """Execute a task via Claude Code and stream output."""
+    execute.__doc__ = """Execute a task via Gemini CLI and stream output."""
 
     async def _stream_lines(
         self, stream: asyncio.StreamReader
@@ -136,7 +131,7 @@ class ClaudeBackend(Backend):
         exit_code = 0
 
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task, "--output-format", "json",
+            self.cli_command, task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -162,8 +157,7 @@ class ClaudeBackend(Backend):
         duration = time.monotonic() - start
         full_output = "".join(chunks)
 
-        # Try to parse structured JSON output
-        model_used, cost, tokens_in, tokens_out = self._parse_json_output(full_output)
+        model_used, cost, tokens_in, tokens_out = self._parse_output(full_output)
 
         return TaskResult(
             backend_name=self.name,
@@ -177,7 +171,7 @@ class ClaudeBackend(Backend):
         )
 
     async def health_check(self) -> HealthStatus:
-        """Check if Claude Code CLI responds to a version command."""
+        """Check if Gemini CLI responds to a version command."""
         if not await self.is_available():
             return HealthStatus(healthy=False, latency_ms=0, details="not installed")
         try:
@@ -197,11 +191,11 @@ class ClaudeBackend(Backend):
         except (FileNotFoundError, OSError) as e:
             return HealthStatus(healthy=False, latency_ms=0, details=str(e))
 
-    def _parse_json_output(
+    def _parse_output(
         self, output: str
     ) -> tuple[Optional[str], Optional[float], Optional[int], Optional[int]]:
         """
-        Parse Claude Code JSON output for metadata.
+        Parse Gemini CLI output for metadata.
 
         Returns (model, cost_usd, tokens_in, tokens_out).
         Falls back to (None, None, None, None) if parsing fails.
