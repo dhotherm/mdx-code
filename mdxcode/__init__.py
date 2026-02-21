@@ -1,11 +1,3 @@
-"""
-MDx Code - AI-Native Engineering Companion
+"""MDx Code — The AI Engineering Manager for your codebase."""
 
-Built for builders. Designed for regulated environments.
-"""
-
-__version__ = "0.1.0"
-
-from mdxcode.cli import app, run
-
-__all__ = ["app", "run", "__version__"]
+__version__ = "2.0.0-alpha.1"

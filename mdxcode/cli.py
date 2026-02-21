@@ -1,269 +1,202 @@
-#!/usr/bin/env python3
-"""
-MDx Code - AI-Native Engineering Companion
-
-Built for builders. Designed for regulated environments.
-Own the orchestration. Swap the models. Keep the governance.
-
-This is what happens when you realize Claude Code's architecture
-is embarrassingly simple... and decide to build your own.
-
-Author: MD
-License: MIT
-"""
+"""MDx Code CLI — The AI Engineering Manager."""
 
 import asyncio
-import sys
+import uuid
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
+from rich.table import Table
 
-from mdxcode.core.agent_loop import AgentLoop
-from mdxcode.core.context_loader import load_mdxcode_context
-from mdxcode.core.session import Session
-from mdxcode.governance.audit import AuditLogger
-from mdxcode.models.router import ModelRouter
-
-# The CLI app
-app = typer.Typer(
-    name="mdxcode",
-    help="AI-Native Engineering Companion. Built for builders.",
-    add_completion=False,
-)
+from . import __version__
+from .backends.discovery import discover_backends, get_best_backend
+from .config import load_config
+from .governance.audit_trail import AuditEntry, read_recent_entries, write_audit_entry
+from .output.footer import show_footer
+from .output.streamer import stream_output
 
 console = Console()
-
-# Version
-__version__ = "0.1.0"
-
-
-def version_callback(value: bool):
-    """Show version and exit."""
-    if value:
-        console.print(f"[bold cyan]MDx Code[/bold cyan] v{__version__}")
-        raise typer.Exit()
+app = typer.Typer(
+    name="mdx",
+    help="MDx Code — The AI Engineering Manager",
+    add_completion=False,
+    invoke_without_command=True,
+    context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
+)
 
 
-# ASCII art banner - MDx CODE with style
-BANNER_ART = """
-[bold cyan]
- ███╗   ███╗[/bold cyan][cyan]██████╗[/cyan] [dim cyan]x[/dim cyan]   [bold white]██████╗ ██████╗ ██████╗ ███████╗[/bold white]
-[bold cyan] ████╗ ████║[/bold cyan][cyan]██╔══██╗[/cyan]     [bold white]██╔════╝██╔═══██╗██╔══██╗██╔════╝[/bold white]
-[bold cyan] ██╔████╔██║[/bold cyan][cyan]██║  ██║[/cyan]     [bold white]██║     ██║   ██║██║  ██║█████╗[/bold white]
-[bold cyan] ██║╚██╔╝██║[/bold cyan][cyan]██║  ██║[/cyan]     [bold white]██║     ██║   ██║██║  ██║██╔══╝[/bold white]
-[bold cyan] ██║ ╚═╝ ██║[/bold cyan][cyan]██████╔╝[/cyan]     [bold white]╚██████╗╚██████╔╝██████╔╝███████╗[/bold white]
-[bold cyan] ╚═╝     ╚═╝[/bold cyan][cyan]╚═════╝[/cyan]      [bold white]╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝[/bold white]
-"""
+def show_banner(backends: Optional[list] = None) -> None:
+    """Display the MDx Code banner."""
+    console.print()
+    console.print(f"  [bold]MDx Code[/bold] v{__version__}")
+    console.print("  [dim]The AI Engineering Manager[/dim]")
+
+    if backends:
+        ready = sum(1 for b in backends if b.healthy)
+        parts: list[str] = []
+        for b in backends:
+            mark = "[green]\u2713[/green]" if b.healthy else "[red]\u2717[/red]"
+            parts.append(f"{b.name.title()} {mark}")
+        console.print()
+        console.print(f"  {ready} backend{'s' if ready != 1 else ''} ready: {'  '.join(parts)}")
+
+    console.print()
 
 
-def show_banner():
-    """Show the MDx Code banner. First impressions matter."""
-    from rich.markup import escape
-    
-    console.print(BANNER_ART)
-    console.print(f"  [dim]v{__version__}[/dim]  [italic]Built for builders. Designed for regulated environments.[/italic]\n")
-    console.print("  [bold green]Yoooooo! Let's ship some code.[/bold green] 🚀\n")
-
-
-@app.callback(invoke_without_command=True)
-def app_callback(
-    ctx: typer.Context,
-    version: bool = typer.Option(False, "--version", "-V", help="Show version and exit.", callback=version_callback, is_eager=True),
-):
-    """MDx Code - AI-Native Engineering Companion."""
-    if ctx.invoked_subcommand is None:
-        show_banner()
-        console.print("Run [bold]mdxcode --help[/bold] for usage.\n")
-
-
-@app.command()
+@app.callback()
 def main(
-    task: str = typer.Argument(None, help="What do you want to work on?"),
-    model: str = typer.Option("claude", "--model", "-m", help="Model to use: claude, gpt, bedrock"),
-    profile: str = typer.Option("standard", "--profile", "-p", help="Regulatory profile: standard, financial_services, healthcare"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without executing"),
-):
-    """
-    Run MDx Code on a task.
-    
-    Examples:
-        mdxcode "Fix the bug in auth.py"
-        mdxcode "Add tests for the claims module" --model gpt
-        mdxcode "Scan for security vulnerabilities" --profile financial_services
-    """
-    show_banner()
-    
-    # Load project context if MDXCODE.md exists
-    context = load_mdxcode_context()
-    if context:
-        console.print(f"[dim]Loaded context from MDXCODE.md[/dim]")
-        if context.project_name:
-            console.print(f"[dim]Project: {context.project_name} ({context.domain})[/dim]")
-    
-    # If no task provided, enter interactive mode
-    if not task:
-        console.print("\n[cyan]No task provided. Entering interactive mode...[/cyan]\n")
-        task = console.input("[bold]What do you want to work on?[/bold] → ")
-        if not task.strip():
-            console.print("[dim]Nothing to do. Exiting.[/dim]")
-            raise typer.Exit()
-    
-    # Initialize the session
-    session = Session(
-        model=model,
-        profile=profile,
-        context=context,
-        verbose=verbose,
-        dry_run=dry_run,
-    )
-    
-    # Initialize audit logging
-    audit = AuditLogger(session)
-    audit.log_session_start(task)
-    
-    # Initialize model router
-    router = ModelRouter(model)
-    
-    # Initialize and run the agent loop
-    # This is where the magic happens.
-    # AI thinks → acts → observes → repeats.
-    agent = AgentLoop(
-        session=session,
-        router=router,
-        audit=audit,
-        console=console,
-    )
-    
-    try:
-        asyncio.run(agent.run(task))
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted. Saving session state...[/yellow]")
-        audit.log_session_end("interrupted")
-    except Exception as e:
-        console.print(f"\n[red]Error: {e}[/red]")
-        audit.log_session_end("error", str(e))
-        raise typer.Exit(1)
-    else:
-        audit.log_session_end("success")
-    
-    console.print("\n[dim]Session complete. Audit log saved.[/dim]")
-
-
-@app.command()
-def auth(
-    provider: str = typer.Argument(..., help="Provider to authenticate: claude, openai, bedrock"),
-):
-    """
-    Authenticate with an LLM provider.
-    
-    Examples:
-        mdxcode auth claude
-        mdxcode auth openai
-    """
-    from mdxcode.models.auth import authenticate
-    
-    show_banner()
-    console.print(f"\n[cyan]Authenticating with {provider}...[/cyan]\n")
-    
-    success = asyncio.run(authenticate(provider, console))
-    
-    if success:
-        console.print(f"\n[green]✓ Authenticated with {provider}[/green]")
-    else:
-        console.print(f"\n[red]✗ Authentication failed[/red]")
-        raise typer.Exit(1)
-
-
-@app.command()
-def security(
-    action: str = typer.Argument("scan", help="Action: scan, fix, learn"),
-    path: str = typer.Option(".", "--path", "-p", help="Path to scan"),
-    auto_fix: bool = typer.Option(False, "--auto-fix", help="Automatically apply fixes"),
-):
-    """
-    Security agent for vulnerability scanning and remediation.
-    
-    Examples:
-        mdxcode security scan
-        mdxcode security scan --path src/
-        mdxcode security fix --auto-fix
-    """
-    from mdxcode.governance.security_agent import SecurityAgent
-    
-    show_banner()
-    console.print(f"\n[cyan]MDx Code Security Agent[/cyan]\n")
-    
-    agent = SecurityAgent(console)
-    
-    if action == "scan":
-        asyncio.run(agent.scan(path))
-    elif action == "fix":
-        asyncio.run(agent.fix(path, auto_fix=auto_fix))
-    elif action == "learn":
-        asyncio.run(agent.learn())
-    else:
-        console.print(f"[red]Unknown action: {action}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command()
-def init():
-    """
-    Initialize MDx Code in the current directory.
-    
-    Creates a starter MDXCODE.md file with sensible defaults.
-    """
-    show_banner()
-    
-    mdxcode_path = Path("MDXCODE.md")
-    
-    if mdxcode_path.exists():
-        console.print("[yellow]MDXCODE.md already exists. Skipping.[/yellow]")
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", "-V", help="Show version"),
+) -> None:
+    """MDx Code — The AI Engineering Manager."""
+    if version:
+        console.print(f"MDx Code v{__version__}")
         raise typer.Exit()
-    
-    from mdxcode.core.context_loader import create_starter_mdxcode
-    
-    create_starter_mdxcode(mdxcode_path)
-    console.print("[green]✓ Created MDXCODE.md[/green]")
-    console.print("[dim]Edit this file to customize MDx Code for your project.[/dim]")
+
+    # If a subcommand is being invoked, let it handle things
+    if ctx.invoked_subcommand is not None:
+        return
+
+    # Check for extra args — these form the task string
+    # e.g., mdx "fix the bug" or mdx fix the bug
+    if ctx.args:
+        task = " ".join(ctx.args)
+        asyncio.run(_execute_task(task))
+        raise typer.Exit()
+
+    # No task, no subcommand — interactive mode
+    backends = asyncio.run(discover_backends())
+    show_banner(backends)
+
+    task_input = console.input("[bold]What do you want to work on?[/bold] \u2192 ")
+    if task_input.strip():
+        asyncio.run(_execute_task(task_input.strip()))
+
+
+async def _execute_task(task: str) -> None:
+    """Execute a task via the best available backend."""
+    config = load_config()
+    session_id = str(uuid.uuid4())
+
+    backend = await get_best_backend(config.default_backend)
+    if backend is None:
+        console.print(
+            "[red]No backend available.[/red] Install Claude Code, Codex CLI, or Gemini CLI."
+        )
+        console.print("Run [bold]mdx setup[/bold] to check backend status.")
+        raise typer.Exit(1)
+
+    cwd = Path.cwd()
+
+    # Stream output from backend
+    full_output, duration = await stream_output(backend.execute(task, cwd))
+
+    # Parse output for metadata
+    model, cost, tokens_in, tokens_out = backend._parse_json_output(full_output)
+
+    # Write audit entry
+    if config.audit.enabled:
+        entry = AuditEntry(
+            session_id=session_id,
+            task=task,
+            backend=backend.name,
+            model=model,
+            working_directory=str(cwd),
+            duration_seconds=duration,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost,
+            exit_code=0,
+            status="success",
+        )
+        write_audit_entry(entry)
+
+    # Show footer
+    if config.display.show_footer:
+        show_footer(
+            backend_name=backend.name,
+            model=model,
+            duration=duration,
+            session_id=session_id,
+            cost_usd=cost,
+        )
 
 
 @app.command()
-def status():
-    """
-    Show current MDx Code status and configuration.
-    """
-    show_banner()
-    
-    from mdxcode.core.context_loader import load_mdxcode_context
-    from mdxcode.models.auth import get_authenticated_providers
-    
-    context = load_mdxcode_context()
-    providers = get_authenticated_providers()
-    
-    console.print("\n[bold]Configuration[/bold]")
-    console.print(f"  MDXCODE.md: {'[green]Found[/green]' if context else '[yellow]Not found[/yellow]'}")
-    if context:
-        console.print(f"  Project: {context.project_name or 'Not set'}")
-        console.print(f"  Domain: {context.domain or 'Not set'}")
-        console.print(f"  Profile: {context.regulatory_profile or 'standard'}")
-    
-    console.print("\n[bold]Authenticated Providers[/bold]")
-    if providers:
-        for provider in providers:
-            console.print(f"  [green]✓[/green] {provider}")
-    else:
-        console.print("  [yellow]None. Run 'mdxcode auth <provider>' to authenticate.[/yellow]")
+def setup() -> None:
+    """Detect and display available backends."""
+    backends = asyncio.run(discover_backends())
+    show_banner(backends)
+
+    table = Table(title="Backend Status", show_header=True)
+    table.add_column("Backend", style="bold")
+    table.add_column("Version")
+    table.add_column("Authenticated")
+    table.add_column("Status")
+
+    for b in backends:
+        auth = "[green]\u2713[/green]" if b.authenticated else "[red]\u2717[/red]"
+        status = "[green]Ready[/green]" if b.healthy else "[yellow]Unavailable[/yellow]"
+        table.add_row(b.name.title(), b.version, auth, status)
+
+    # Show CLIs not detected at all
+    known = {"claude", "codex", "gemini"}
+    detected = {b.name for b in backends}
+    for name in known - detected:
+        table.add_row(name.title(), "not found", "[red]\u2717[/red]", "[dim]Not installed[/dim]")
+
+    console.print(table)
+    console.print()
 
 
-def run():
-    """Entry point for the CLI."""
-    app()
+@app.command()
+def status() -> None:
+    """Show current configuration and backend health."""
+    config = load_config()
+    backends = asyncio.run(discover_backends())
+    show_banner(backends)
+
+    console.print("[bold]Configuration[/bold]")
+    console.print(f"  Default backend: {config.default_backend}")
+    console.print(f"  Routing strategy: {config.routing_strategy}")
+    console.print(f"  Audit enabled: {config.audit.enabled}")
+    console.print(f"  Chain hashing: {config.audit.chain_hashing}")
+    console.print(f"  Audit directory: {config.audit.directory}")
+    console.print(f"  Show footer: {config.display.show_footer}")
+    console.print(f"  Verbose: {config.display.verbose}")
+    console.print()
 
 
-if __name__ == "__main__":
-    run()
+@app.command()
+def audit(count: int = typer.Option(10, "--count", "-n", help="Number of entries to show")) -> None:
+    """Show recent audit entries."""
+    entries = read_recent_entries(count=count)
+
+    if not entries:
+        console.print("[dim]No audit entries found.[/dim]")
+        console.print("Run a task with [bold]mdx \"your task\"[/bold] to generate audit entries.")
+        return
+
+    table = Table(title=f"Recent Audit Entries (last {count})", show_header=True)
+    table.add_column("Time", style="dim")
+    table.add_column("Backend")
+    table.add_column("Task", max_width=40)
+    table.add_column("Duration")
+    table.add_column("Status")
+    table.add_column("Cost")
+
+    for entry in entries:
+        ts = entry.get("timestamp", "")[:19]
+        backend = entry.get("backend", "?")
+        task = entry.get("task", "?")
+        dur = f"{entry.get('duration_seconds', 0):.1f}s"
+        status_val = entry.get("status", "?")
+        cost = entry.get("cost_usd")
+        cost_str = f"${cost:.4f}" if cost else "-"
+        status_style = "green" if status_val == "success" else "red"
+
+        table.add_row(ts, backend, task, dur, f"[{status_style}]{status_val}[/{status_style}]", cost_str)
+
+    console.print(table)
+    console.print()
