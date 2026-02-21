@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import os
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,7 +24,86 @@ from .config import MDX_DIR, load_config
 
 LAST_TASK_PATH = MDX_DIR / "last_task.json"
 
-console = Console()
+# Check NO_COLOR standard (https://no-color.org)
+NO_COLOR = os.environ.get("NO_COLOR") is not None
+
+console = Console(no_color=NO_COLOR)
+
+# Shared task category icons — used in routing line, history, audit, summary
+CATEGORY_ICONS: dict[str, str] = {
+    "code_review": "\U0001f50d",
+    "debugging": "\U0001f41b",
+    "code_generation": "\U0001f3d7\ufe0f",
+    "documentation": "\U0001f4dd",
+    "security": "\U0001f512",
+    "refactoring": "\u267b\ufe0f",
+    "test_writing": "\U0001f9ea",
+    "general": "\U0001f4ac",
+}
+
+# Cache for project context (branch, language, file count) — computed once per session
+_project_context_cache: str | None = None
+
+
+def _get_project_context() -> str:
+    """Detect project context: git branch, primary language, file count."""
+    global _project_context_cache
+    if _project_context_cache is not None:
+        return _project_context_cache
+
+    parts: list[str] = []
+
+    # Git branch
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts.append(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    # Primary language and file count (from git ls-files)
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            files = result.stdout.strip().splitlines()
+
+            ext_count: dict[str, int] = {}
+            for f in files:
+                ext = Path(f).suffix.lower()
+                if ext:
+                    ext_count[ext] = ext_count.get(ext, 0) + 1
+
+            EXT_TO_LANG = {
+                ".py": "Python", ".ts": "TypeScript", ".tsx": "TypeScript",
+                ".js": "JavaScript", ".jsx": "JavaScript", ".go": "Go",
+                ".rs": "Rust", ".java": "Java", ".kt": "Kotlin",
+                ".rb": "Ruby", ".swift": "Swift", ".cs": "C#",
+                ".cpp": "C++", ".c": "C", ".php": "PHP",
+            }
+
+            lang_count: dict[str, int] = {}
+            for ext, count in ext_count.items():
+                lang = EXT_TO_LANG.get(ext)
+                if lang:
+                    lang_count[lang] = lang_count.get(lang, 0) + count
+
+            if lang_count:
+                primary = max(lang_count, key=lang_count.get)  # type: ignore[arg-type]
+                parts.append(primary)
+
+            if files:
+                parts.append(f"{len(files)} files")
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    _project_context_cache = " \u00b7 ".join(parts)
+    return _project_context_cache
 
 
 class TaskGroup(typer.core.TyperGroup):
@@ -52,6 +133,14 @@ app = typer.Typer(
     add_completion=False,
     invoke_without_command=True,
     cls=TaskGroup,
+    rich_markup_mode="rich",
+    epilog=(
+        "[bold]Examples:[/bold]\n"
+        '  mdx "fix the login bug"              Smart-route to best backend\n'
+        '  mdx "add tests" --backend claude      Force Claude Code\n'
+        '  mdx "refactor auth" --strategy cost   Optimize for cost\n'
+        '  mdx "task" --pick                     Choose backend interactively'
+    ),
 )
 
 policy_app = typer.Typer(help="Policy management commands")
@@ -88,14 +177,23 @@ def _show_routing_line(
     user_specified: bool = False,
     scores: dict[str, float] | None = None,
     num_backends: int = 0,
+    category: str = "general",
 ) -> None:
-    """Show a one-line routing decision with optional score context."""
+    """Show a one-line routing decision with project context and category icon."""
     from .output.colors import colored_backend
 
+    icon = CATEGORY_ICONS.get(category, "\U0001f4ac")
+    context = _get_project_context()
+    context_str = f"{context} \u2192 " if context else "\u2192 "
+
     if user_specified:
-        console.print(f"  [dim]\u2192 Using {colored_backend(backend_name)} (user specified)[/dim]")
+        console.print(
+            f"  [dim]{icon} {context_str}Using {colored_backend(backend_name)} (user specified)[/dim]"
+        )
     else:
-        console.print(f"  [dim]\u2192 Routing to {colored_backend(backend_name)} \u2014 {reason}[/dim]")
+        console.print(
+            f"  [dim]{icon} {context_str}Routing to {colored_backend(backend_name)} \u2014 {reason}[/dim]"
+        )
         # Show score comparison on second dim line
         if scores and len(scores) > 1:
             parts = []
@@ -110,8 +208,16 @@ def _show_routing_line(
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-V", help="Show version"),
+    no_color: bool = typer.Option(False, "--no-color", help="Disable colors"),
+    no_markdown: bool = typer.Option(False, "--no-markdown", help="Disable markdown rendering"),
 ) -> None:
     """MDx Code — The AI Engineering Manager."""
+    if no_color or NO_COLOR:
+        console.no_color = True
+    # Store no_markdown in context for streamer
+    ctx.ensure_object(dict)
+    ctx.obj["no_markdown"] = no_markdown or not sys.stdout.isatty()
+
     if version:
         console.print(f"MDx Code v{__version__}")
         raise typer.Exit()
@@ -139,6 +245,7 @@ def run(
     strategy: Optional[str] = typer.Option(
         None, "--strategy", "-s", help="Routing strategy"
     ),
+    pick: bool = typer.Option(False, "--pick", "-p", help="Interactively pick a backend"),
 ) -> None:
     """Execute a task (hidden command -- invoked automatically)."""
     if not task_parts:
@@ -160,7 +267,9 @@ def run(
     resolved_strategy = strategy_map.get(strategy, strategy) if strategy else None
 
     asyncio.run(
-        _execute_task(task, backend_override=backend, strategy_override=resolved_strategy)
+        _execute_task(
+            task, backend_override=backend, strategy_override=resolved_strategy, pick=pick,
+        )
     )
 
 
@@ -168,20 +277,23 @@ async def _execute_task(
     task: str,
     backend_override: Optional[str] = None,
     strategy_override: Optional[str] = None,
+    pick: bool = False,
 ) -> None:
     """Execute a task via the best available backend."""
     from .backends.circuit_breaker import get_circuit_breaker
     from .backends.discovery import INSTALL_INSTRUCTIONS, discover_backends, get_best_backend
+    from .config import load_project_config
     from .governance.audit_trail import AuditEntry, write_audit_entry
     from .governance.policy_engine import evaluate_policies, load_policy_file
     from .output.footer import show_footer
     from .output.streamer import stream_output
-    from .router.cost_tracker import record_cost
+    from .router.cost_tracker import get_date_range_for_period, get_total_cost, record_cost
     from .router.engine import categorize_task
     from .router.profiles import estimate_cost, estimate_tokens_from_chars, get_profiles
     from .router.strategies import route_task
 
     config = load_config()
+    project_config = load_project_config()
     session_id = str(uuid.uuid4())
 
     # Get available backends list
@@ -191,29 +303,35 @@ async def _execute_task(
     # Categorize the task
     category = categorize_task(task)
 
-    # Determine routing strategy
-    strategy = strategy_override or config.routing_strategy
+    # Determine routing strategy (project config overrides global defaults)
+    strategy = strategy_override or (
+        project_config.strategy if project_config and project_config.strategy else config.routing_strategy
+    )
 
     # Determine which backend to use
     user_specified = backend_override is not None
     routing_reason = ""
     routing_decision = None
 
+    # Project config can set preferred backend
+    if not backend_override and project_config and project_config.preferred_backend:
+        backend_override = project_config.preferred_backend
+        routing_reason = "project config (.mdx.yaml)"
+
+    # Always compute profiles and routable backends (needed for fallback recovery)
+    profiles = get_profiles()
+    cb = get_circuit_breaker()
+    routable_backends = [
+        name for name in backends_available
+        if name != "opencode" and cb.is_available(name)
+    ]
+
     if user_specified:
         # User explicitly chose — bypass smart routing
         backend, selection_reason = await get_best_backend(backend_override)
-        routing_reason = "user specified"
+        routing_reason = routing_reason or "user specified"
     else:
         # Smart routing: use categorization + strategy
-        profiles = get_profiles()
-        cb = get_circuit_breaker()
-
-        # Filter to backends that are available and not circuit-broken
-        routable_backends = [
-            name for name in backends_available
-            if name != "opencode" and cb.is_available(name)
-        ]
-
         routing_decision = route_task(category, routable_backends, profiles, strategy)
 
         if routing_decision:
@@ -245,6 +363,40 @@ async def _execute_task(
         console.print("Run [bold]mdx setup[/bold] to check backend status.")
         raise typer.Exit(1)
 
+    # Interactive backend picker (Feature 3)
+    if pick and routing_decision and routing_decision.scores:
+        from .output.colors import colored_backend as _cb
+
+        console.print()
+        console.print(f"  [bold]Pick a backend for:[/bold] \"{task}\"")
+        console.print()
+
+        sorted_backends = sorted(
+            routing_decision.scores.items(), key=lambda x: x[1], reverse=True,
+        )
+        for i, (name, score) in enumerate(sorted_backends, 1):
+            rec = " [green](recommended)[/green]" if name == routing_decision.backend_name else ""
+            profile = profiles.get(name)
+            cost_hint = ""
+            if profile:
+                avg = (profile.cost_per_1k_tokens["input"] + profile.cost_per_1k_tokens["output"]) / 2
+                cost_hint = f"  ~${avg:.3f}/1k tokens"
+            console.print(
+                f"    [{i}] {_cb(name):<20}  score: {score:.2f}{cost_hint}{rec}"
+            )
+
+        console.print()
+        choice = console.input(f"  Choose [1-{len(sorted_backends)}]: ").strip()
+
+        try:
+            idx = int(choice) - 1
+            chosen_name = sorted_backends[idx][0]
+            backend, selection_reason = await get_best_backend(chosen_name)
+            user_specified = True
+            routing_reason = "user picked"
+        except (ValueError, IndexError):
+            console.print("[dim]Invalid choice. Using recommended backend.[/dim]")
+
     # Show routing decision
     if config.display.show_routing_reason:
         _show_routing_line(
@@ -253,7 +405,30 @@ async def _execute_task(
             user_specified=user_specified,
             scores=routing_decision.scores if routing_decision else None,
             num_backends=len(backends_available),
+            category=category.category,
         )
+
+    # Check daily budget before executing (Feature 7)
+    effective_budget = (
+        (project_config.daily_budget if project_config and project_config.daily_budget else None)
+        or config.daily_budget
+    )
+    daily_spent: float | None = None
+    if effective_budget:
+        since_dt, until_dt = get_date_range_for_period("today")
+        daily_spent = get_total_cost(since=since_dt, until=until_dt)
+        pct = (daily_spent / effective_budget) * 100
+
+        if pct >= 100:
+            console.print(
+                f"  [red]\u26a0 Daily budget exhausted: ${daily_spent:.2f} / ${effective_budget:.2f}[/red]"
+            )
+            console.print("  [dim]Adjust daily_budget in config or .mdx.yaml to continue.[/dim]")
+            raise typer.Exit(1)
+        elif pct >= 80:
+            console.print(
+                f"  [yellow]\u26a0 Daily spend: ${daily_spent:.2f} / ${effective_budget:.2f} ({pct:.0f}%)[/yellow]"
+            )
 
     cwd = Path.cwd()
     cb = get_circuit_breaker()
@@ -261,11 +436,58 @@ async def _execute_task(
     # Stream output from backend
     full_output, duration = await stream_output(backend.execute(task, cwd))
 
-    # Determine success/failure for circuit breaker
+    # Smart error detection and recovery (Feature 4)
     if "[MDx Code] Backend error" in full_output or "[MDx Code] Task timed out" in full_output:
         cb.record_failure(backend.name)
         exit_code = 1
         status_val = "error"
+
+        # Classify the error for smart recovery
+        output_lower = full_output.lower()
+        if any(kw in output_lower for kw in ("rate limit", "429", "too many requests", "quota")):
+            error_type = "rate_limit"
+        elif any(kw in output_lower for kw in ("auth", "login", "credential", "token expired", "unauthorized")):
+            error_type = "auth"
+        elif "timed out" in output_lower:
+            error_type = "timeout"
+        elif any(kw in output_lower for kw in ("connection", "network", "dns", "unreachable")):
+            error_type = "network"
+        else:
+            error_type = None
+
+        # Show actionable guidance
+        if error_type == "auth":
+            console.print(
+                f"  [yellow]\U0001f4a1 Session expired. Run `{backend.cli_command}` to re-authenticate.[/yellow]"
+            )
+        elif error_type == "timeout":
+            console.print("  [yellow]\U0001f4a1 Task timed out. Try breaking it into smaller pieces,[/yellow]")
+            console.print("  [yellow]   or use --backend for a faster alternative.[/yellow]")
+        elif error_type == "network":
+            console.print("  [yellow]\U0001f4a1 Network error. Check your connection and retry.[/yellow]")
+        elif error_type == "rate_limit" and not user_specified:
+            # Auto-fallback to next best backend
+            console.print(
+                f"  [yellow]\u26a1 {backend.name.title()} rate limited. Trying next backend...[/yellow]"
+            )
+            remaining = [n for n in routable_backends if n != backend.name]
+            if remaining:
+                fallback_decision = route_task(category, remaining, profiles, strategy)
+                if fallback_decision:
+                    fallback_backend, _ = await get_best_backend(fallback_decision.backend_name)
+                    if fallback_backend:
+                        _show_routing_line(
+                            fallback_backend.name, "auto-fallback (rate limited)",
+                            category=category.category,
+                        )
+                        full_output, duration = await stream_output(
+                            fallback_backend.execute(task, cwd)
+                        )
+                        if "[MDx Code] Backend error" not in full_output:
+                            cb.record_success(fallback_backend.name)
+                            exit_code = 0
+                            status_val = "success"
+                            backend = fallback_backend
     else:
         cb.record_success(backend.name)
         exit_code = 0
@@ -406,6 +628,30 @@ async def _execute_task(
     except Exception:
         pass  # Policy enforcement should never block the user
 
+    # Timing intelligence (Feature 8)
+    timing_insight = None
+    try:
+        from .governance.audit_trail import get_average_duration
+
+        avg = get_average_duration(backend=backend.name, task_category=category.category)
+        if avg and avg > 0:
+            diff_pct = ((avg - duration) / avg) * 100
+            if diff_pct > 10:
+                timing_insight = f"{diff_pct:.0f}% faster than avg"
+            elif diff_pct < -10:
+                timing_insight = f"{abs(diff_pct):.0f}% slower than avg"
+    except Exception:
+        pass
+
+    # Refresh daily spend for footer display
+    if effective_budget and daily_spent is not None:
+        # Re-query to include the cost we just recorded
+        try:
+            since_dt, until_dt = get_date_range_for_period("today")
+            daily_spent = get_total_cost(since=since_dt, until=until_dt)
+        except Exception:
+            pass
+
     # Show footer
     if config.display.show_footer:
         show_footer(
@@ -420,12 +666,19 @@ async def _execute_task(
             selection_reason=selection_reason,
             has_file_changes=has_file_changes,
             alternative_costs=alternative_costs,
+            timing_insight=timing_insight,
+            daily_budget=effective_budget,
+            daily_spent=daily_spent,
         )
 
 
 @app.command()
 def setup() -> None:
-    """Detect and display available backends."""
+    """Detect and display available backends.
+
+    Examples:
+      mdx setup                     Show available backends
+    """
     from .backends.discovery import KNOWN_CLIS, discover_backends
 
     backends = asyncio.run(discover_backends())
@@ -474,7 +727,11 @@ def setup() -> None:
 
 @app.command()
 def status() -> None:
-    """Show backend health and circuit breaker status."""
+    """Show backend health and circuit breaker status.
+
+    Examples:
+      mdx status                    Check all backend health
+    """
     from .backends.circuit_breaker import get_circuit_breaker
     from .backends.discovery import BACKEND_CLASSES, KNOWN_CLIS, discover_backends
 
@@ -530,7 +787,14 @@ def cost(
     month: bool = typer.Option(False, "--month", "-m", help="Show this month's costs"),
     since: Optional[str] = typer.Option(None, "--since", help="Custom start date (YYYY-MM-DD)"),
 ) -> None:
-    """Show spending dashboard."""
+    """Show spending dashboard.
+
+    Examples:
+      mdx cost                      Today's spending
+      mdx cost --week               This week's costs
+      mdx cost --month              Monthly overview
+      mdx cost --since 2025-01-01   Custom date range
+    """
     from .router.cost_tracker import (
         get_cost_by_backend,
         get_date_range_for_period,
@@ -623,7 +887,16 @@ def audit(
     export: Optional[str] = typer.Option(None, "--export", help="Export format: csv or json"),
     stats: bool = typer.Option(False, "--stats", help="Show audit statistics"),
 ) -> None:
-    """Show recent audit entries with filtering, export, and verification."""
+    """Show recent audit entries with filtering, export, and verification.
+
+    Examples:
+      mdx audit                     Show last 10 entries
+      mdx audit -n 50               Show last 50 entries
+      mdx audit --verify            Verify chain hash integrity
+      mdx audit --stats             Show audit statistics
+      mdx audit --export csv        Export as CSV
+      mdx audit --backend claude    Filter by backend
+    """
     from .governance.audit_trail import (
         compute_audit_stats,
         export_entries_csv,
@@ -744,6 +1017,9 @@ def audit(
         ts = entry.get("timestamp", "")[:19]
         backend_name = entry.get("backend", "?")
         task = entry.get("task", "?")
+        cat = entry.get("task_category", "general")
+        icon = CATEGORY_ICONS.get(cat, "\U0001f4ac")
+        task_display = f"{icon} {task}"
         dur = f"{entry.get('duration_seconds', 0):.1f}s"
         status_val = entry.get("status", "?")
         cost_val = entry.get("cost_usd")
@@ -752,13 +1028,189 @@ def audit(
         reason = entry.get("routing_reason") or entry.get("backend_selection_reason", "")
 
         table.add_row(
-            ts, colored_backend(backend_name), task, dur,
+            ts, colored_backend(backend_name), task_display, dur,
             f"[{status_style}]{status_val}[/{status_style}]",
             cost_str, reason,
         )
 
     console.print(table)
     console.print()
+
+
+@app.command()
+def history(
+    count: int = typer.Option(20, "--count", "-n", help="Number of entries"),
+    search: Optional[str] = typer.Option(None, "--search", "-s", help="Search tasks"),
+    backend_filter: Optional[str] = typer.Option(None, "--backend", "-b", help="Filter by backend"),
+) -> None:
+    """Show recent task history.
+
+    Examples:
+      mdx history                   Show last 20 tasks
+      mdx history -n 50             Show last 50 tasks
+      mdx history -s "login"        Search for tasks mentioning "login"
+      mdx history -b claude         Show only Claude Code tasks
+    """
+    from .governance.audit_trail import read_recent_entries
+    from .output.colors import colored_backend
+
+    entries = read_recent_entries(count=min(count * 2, 100))
+
+    # Filter out non-task entries (policy checks, reviews logged separately)
+    entries = [e for e in entries if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))]
+
+    if search:
+        search_lower = search.lower()
+        entries = [e for e in entries if search_lower in e.get("task", "").lower()]
+
+    if backend_filter:
+        entries = [e for e in entries if e.get("backend") == backend_filter]
+
+    entries = entries[:count]
+
+    if not entries:
+        console.print("[dim]No task history found.[/dim]")
+        if search:
+            console.print(f"[dim]Try a different search term than '{search}'.[/dim]")
+        return
+
+    console.print()
+    for entry in entries:
+        ts = entry.get("timestamp", "")
+        task = entry.get("task", "?")
+        backend_name = entry.get("backend", "?")
+        status_val = entry.get("status", "?")
+        duration = entry.get("duration_seconds", 0)
+        cost_val = entry.get("cost_usd")
+        cat = entry.get("task_category", "general")
+        icon = CATEGORY_ICONS.get(cat, "\U0001f4ac")
+        status_mark = "[green]\u2713[/green]" if status_val == "success" else "[red]\u2717[/red]"
+        cost_str = f"${cost_val:.4f}" if cost_val else ""
+
+        # Truncate task
+        if len(task) > 50:
+            task = task[:47] + "..."
+
+        # Format time as HH:MM
+        time_str = ts[11:16] if ts else ""
+
+        console.print(
+            f"  {status_mark} {icon} [dim]{time_str}[/dim]  "
+            f"{task:<52} {colored_backend(backend_name):>20}  "
+            f"[dim]{duration:.1f}s  {cost_str}[/dim]"
+        )
+
+    console.print()
+    console.print(f"  [dim]{len(entries)} tasks shown. Use --search to filter.[/dim]")
+    console.print()
+
+
+@app.command()
+def summary(
+    week: bool = typer.Option(False, "--week", "-w", help="Show weekly summary"),
+) -> None:
+    """Show your AI coding summary for today.
+
+    Examples:
+      mdx summary                   Today's summary
+      mdx summary --week            This week's summary
+    """
+    from .governance.audit_trail import read_filtered_entries
+    from .output.colors import colored_backend
+    from .router.cost_tracker import get_date_range_for_period, get_savings, get_total_cost
+
+    period = "week" if week else "today"
+    since_dt, until_dt = get_date_range_for_period(period)
+    period_label = "This Week" if week else "Today"
+
+    # Get entries
+    config = load_config()
+    audit_dir = Path(config.audit.directory).expanduser()
+    entries = read_filtered_entries(audit_dir, since=since_dt.strftime("%Y-%m-%d"))
+
+    # Filter to actual tasks
+    tasks = [e for e in entries if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))]
+    reviews = [e for e in entries if e.get("task", "").startswith("adversarial_review:")]
+
+    if not tasks and not reviews:
+        console.print(f"[dim]No activity {period_label.lower()}. Run a task to get started.[/dim]")
+        return
+
+    # Compute stats
+    total_tasks = len(tasks)
+    successful = sum(1 for t in tasks if t.get("status") == "success")
+    total_duration = sum(t.get("duration_seconds", 0) for t in tasks)
+    backends_used = set(t.get("backend", "") for t in tasks if t.get("backend"))
+    total_cost = get_total_cost(since=since_dt, until=until_dt)
+    total_savings = get_savings(since=since_dt, until=until_dt)
+
+    # Format duration
+    minutes = int(total_duration // 60)
+    seconds = int(total_duration % 60)
+
+    console.print()
+    console.print(f"  [bold]\U0001f4ca {period_label}: Your AI Coding Summary[/bold]")
+    console.print()
+    console.print(f"  Tasks completed: [bold]{successful}[/bold] / {total_tasks}")
+    console.print(f"  Reviews run: [bold]{len(reviews)}[/bold]")
+    console.print(f"  Total AI time: [bold]{minutes}m {seconds:02d}s[/bold]")
+    console.print(f"  Backends used: {', '.join(colored_backend(b) for b in sorted(backends_used))}")
+    console.print(f"  Total cost: [bold]${total_cost:.4f}[/bold]")
+    if total_savings > 0:
+        console.print(f"  Smart routing saved: [green]${total_savings:.4f}[/green]")
+    console.print()
+
+    # Top categories
+    cat_count: dict[str, int] = {}
+    for t in tasks:
+        cat = t.get("task_category", "general")
+        cat_count[cat] = cat_count.get(cat, 0) + 1
+
+    if cat_count:
+        console.print("  Task breakdown:")
+        for cat, cnt in sorted(cat_count.items(), key=lambda x: x[1], reverse=True):
+            icon = CATEGORY_ICONS.get(cat, "\U0001f4ac")
+            console.print(f"    {icon} {cat.replace('_', ' '):<20} {cnt}")
+        console.print()
+
+
+@app.command(name="install-completion")
+def install_completion(
+    shell: str = typer.Option("auto", help="Shell: bash, zsh, fish"),
+) -> None:
+    """Install shell tab-completion for MDx Code.
+
+    Examples:
+      mdx install-completion            Auto-detect shell
+      mdx install-completion --shell zsh   Force zsh
+    """
+    if shell == "auto":
+        shell = os.environ.get("SHELL", "").split("/")[-1] or "bash"
+
+    completion_script = {
+        "zsh": 'eval "$(_MDX_COMPLETE=zsh_source mdx)"',
+        "bash": 'eval "$(_MDX_COMPLETE=bash_source mdx)"',
+        "fish": "_MDX_COMPLETE=fish_source mdx | source",
+    }
+
+    script = completion_script.get(shell)
+    if not script:
+        console.print(f"[red]Unsupported shell: {shell}. Use bash, zsh, or fish.[/red]")
+        raise typer.Exit(1)
+
+    rc_files = {"zsh": "~/.zshrc", "bash": "~/.bashrc", "fish": "~/.config/fish/config.fish"}
+    rc_path = Path(rc_files[shell]).expanduser()
+
+    marker = "# MDx Code completion"
+    if rc_path.exists() and marker in rc_path.read_text():
+        console.print("[green]Completion already installed.[/green]")
+        return
+
+    with open(rc_path, "a") as f:
+        f.write(f"\n{marker}\n{script}\n")
+
+    console.print(f"[green]\u2713 Completion installed for {shell}.[/green]")
+    console.print(f"  Restart your shell or run: [bold]source {rc_files[shell]}[/bold]")
 
 
 def _save_last_task(task: str, backend_name: str, cwd: Path, output: str = "") -> None:
@@ -819,7 +1271,11 @@ def _load_last_task() -> Optional[dict]:
 
 @app.command()
 def replay() -> None:
-    """Replay the last task's output without re-executing."""
+    """Replay the last task's output without re-executing.
+
+    Examples:
+      mdx replay                    Replay last task output
+    """
     from rich.markdown import Markdown
 
     from .output.streamer import _looks_like_markdown
@@ -849,7 +1305,11 @@ def replay() -> None:
 
 @app.command()
 def undo() -> None:
-    """Undo the last change made by a backend."""
+    """Undo the last change made by a backend.
+
+    Examples:
+      mdx undo                      Revert last backend change
+    """
     task_data = _load_last_task()
     if not task_data:
         console.print("[dim]No recent task to undo.[/dim]")
@@ -939,7 +1399,14 @@ def review(
     ),
     format: str = typer.Option("rich", "--format", "-f", help="Output format: rich or json"),
 ) -> None:
-    """Run adversarial multi-model code review."""
+    """Run adversarial multi-model code review.
+
+    Examples:
+      mdx review src/auth/          Review a directory
+      mdx review --last             Review last MDx change
+      mdx review --diff HEAD~1      Review a git diff
+      mdx review --staged           Pre-commit review
+    """
     asyncio.run(_run_review(paths, last, diff, staged, backend, format))
 
 
@@ -1068,7 +1535,11 @@ async def _run_review(
 
 @app.command()
 def update() -> None:
-    """Update MDx Code and all installed backends."""
+    """Update MDx Code and all installed backends.
+
+    Examples:
+      mdx update                    Update all backends
+    """
     import shutil
 
     console.print()
@@ -1169,7 +1640,12 @@ def policy_default(ctx: typer.Context) -> None:
 def policy_check(
     files: list[str] = typer.Argument(..., help="Files to check against policies"),
 ) -> None:
-    """Check files against active policies."""
+    """Check files against active policies.
+
+    Examples:
+      mdx policy check src/auth.py          Check a single file
+      mdx policy check src/ lib/            Check multiple paths
+    """
     from .governance.policy_engine import _match_path, evaluate_policies, load_policy_file
 
     policy_file = load_policy_file()
@@ -1209,7 +1685,11 @@ def policy_check(
 
 @policy_app.command("init")
 def policy_init() -> None:
-    """Create a starter .mdxpolicy file in the current directory."""
+    """Create a starter .mdxpolicy file in the current directory.
+
+    Examples:
+      mdx policy init               Create starter .mdxpolicy
+    """
     from .governance.policy_engine import STARTER_POLICY
 
     target = Path.cwd() / ".mdxpolicy"
@@ -1227,7 +1707,11 @@ def policy_init() -> None:
 
 @app.command()
 def compliance() -> None:
-    """Show regulatory compliance mapping matrix."""
+    """Show regulatory compliance mapping matrix.
+
+    Examples:
+      mdx compliance                View all compliance mappings
+    """
     from .governance.compliance import get_compliance_matrix
 
     matrix = get_compliance_matrix()
@@ -1264,7 +1748,11 @@ HOOK_MARKER = "# MDx Code pre-commit hook"
 
 @hook_app.command("install")
 def hook_install() -> None:
-    """Install MDx Code git pre-commit hook."""
+    """Install MDx Code git pre-commit hook.
+
+    Examples:
+      mdx hook install              Install pre-commit hook
+    """
     git_dir = Path.cwd() / ".git"
     if not git_dir.is_dir():
         console.print("[red]Not a git repository. Run this from a git repo root.[/red]")
@@ -1389,7 +1877,11 @@ MCP_SERVERS = {
 
 @mcp_app.command("status")
 def mcp_status() -> None:
-    """Show available MCP servers and their status."""
+    """Show available MCP servers and their status.
+
+    Examples:
+      mdx mcp status                Check MCP server availability
+    """
     # Check if mcp package is importable
     mcp_available = False
     try:
@@ -1440,7 +1932,13 @@ def mcp_config(
         help="Target client: claude-code, cursor, or codex",
     ),
 ) -> None:
-    """Generate MCP server configuration for your client."""
+    """Generate MCP server configuration for your client.
+
+    Examples:
+      mdx mcp config                Generate Claude Code config
+      mdx mcp config --client cursor   Config for Cursor
+      mdx mcp config --client codex    Config for Codex CLI
+    """
     servers_config = {
         "mdx-governance": {
             "command": "mdx-governance-server",

@@ -56,6 +56,17 @@ class MdxConfig(BaseModel):
     )
     audit: AuditConfig = Field(default_factory=AuditConfig)
     display: DisplayConfig = Field(default_factory=DisplayConfig)
+    max_cost_per_task: Optional[float] = None
+    daily_budget: Optional[float] = None
+
+
+class ProjectConfig(BaseModel):
+    """Project-level configuration (from .mdx.yaml in repo root)."""
+
+    preferred_backend: Optional[str] = None
+    strategy: Optional[str] = None
+    max_cost_per_task: Optional[float] = None
+    daily_budget: Optional[float] = None
 
 
 def ensure_mdx_dir() -> Path:
@@ -85,3 +96,20 @@ def save_config(config: MdxConfig, path: Optional[Path] = None) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     data = config.model_dump()
     config_path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
+
+
+def load_project_config() -> Optional[ProjectConfig]:
+    """Load project-level config from .mdx.yaml in current or parent dirs."""
+    cwd = Path.cwd()
+    for directory in [cwd, *cwd.parents]:
+        config_file = directory / ".mdx.yaml"
+        if config_file.exists():
+            try:
+                raw = yaml.safe_load(config_file.read_text()) or {}
+                return ProjectConfig(**raw)
+            except Exception:
+                return None
+        # Stop at git root
+        if (directory / ".git").exists():
+            break
+    return None

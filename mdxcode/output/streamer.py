@@ -1,6 +1,7 @@
 """Real-time output streaming from backend adapters."""
 
 import asyncio
+import sys
 import time
 from typing import AsyncIterator
 
@@ -28,10 +29,23 @@ async def stream_output(chunks: AsyncIterator[str]) -> tuple[str, float]:
     are received, renders the full output as Rich markdown (if detected)
     or as raw text.
 
+    When piping (non-TTY), skips spinner and markdown rendering for
+    clean machine-readable output.
+
     Returns (full_output, duration_seconds).
     """
     start = time.monotonic()
     captured: list[str] = []
+
+    # Raw mode for piped output — no spinner, no markdown
+    if not sys.stdout.isatty():
+        async for chunk in chunks:
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+            captured.append(chunk)
+        duration = time.monotonic() - start
+        return "".join(captured), duration
+
     first_chunk = True
     receiving = False
 

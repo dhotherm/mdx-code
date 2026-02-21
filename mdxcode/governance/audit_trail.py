@@ -253,6 +253,38 @@ def export_entries_csv(entries: list[dict]) -> str:
     return output.getvalue()
 
 
+def get_average_duration(
+    audit_dir: Optional[Path] = None,
+    backend: Optional[str] = None,
+    task_category: Optional[str] = None,
+    min_entries: int = 5,
+) -> Optional[float]:
+    """Get average duration for similar tasks. Returns None if not enough data."""
+    if audit_dir is None:
+        config = load_config()
+        audit_dir = Path(config.audit.directory).expanduser()
+
+    entries = _read_all_entries(audit_dir)
+
+    # Filter to successful task executions only
+    filtered = [
+        e for e in entries
+        if e.get("status") == "success"
+        and not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))
+    ]
+
+    if backend:
+        filtered = [e for e in filtered if e.get("backend") == backend]
+    if task_category:
+        filtered = [e for e in filtered if e.get("task_category") == task_category]
+
+    if len(filtered) < min_entries:
+        return None
+
+    durations = [e.get("duration_seconds", 0) for e in filtered]
+    return sum(durations) / len(durations) if durations else None
+
+
 def compute_audit_stats(entries: list[dict]) -> dict:
     """
     Compute summary statistics from audit entries.

@@ -20,10 +20,13 @@ It wraps them with orchestration. Don't create tools or agent loops.
 
 ## Commands
 - `mdx "task"` — Execute via best backend
+- `mdx "task" --pick` — Interactively pick a backend
 - `mdx review src/` — Adversarial review
 - `mdx review --last` — Review last change
 - `mdx cost` — Spending dashboard
 - `mdx audit` — Audit history
+- `mdx history` — Recent task history
+- `mdx summary` — Today's AI coding summary
 - `mdx setup` — Show available backends
 - `mdx status` — Backend health
 - `mdx policy` — View active policies
@@ -35,6 +38,7 @@ It wraps them with orchestration. Don't create tools or agent loops.
 - `mdx undo` — Revert last backend change (with confirmation)
 - `mdx mcp status` — MCP server availability
 - `mdx mcp config` — Generate MCP client config
+- `mdx install-completion` — Shell tab-completion setup
 
 ## Git Workflow
 - Work on `v2-dev` branch

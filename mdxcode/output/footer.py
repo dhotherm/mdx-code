@@ -28,6 +28,9 @@ def show_footer(
     selection_reason: Optional[str] = None,
     has_file_changes: bool = False,
     alternative_costs: dict[str, float] | None = None,
+    timing_insight: Optional[str] = None,
+    daily_budget: Optional[float] = None,
+    daily_spent: Optional[float] = None,
 ) -> None:
     """Display the MDx Code footer after task completion."""
     width = min(console.width, 52)
@@ -36,15 +39,16 @@ def show_footer(
     console.print()
     console.print(f"[dim]\u2500\u2500\u2500 MDx Code {separator[12:]}[/dim]")
 
-    # Completion line (with colored backend name)
+    # Completion line (with colored backend name and timing insight)
     model_display = f" ({model})" if model else ""
     reason_display = ""
     if selection_reason:
         label = REASON_LABELS.get(selection_reason, selection_reason)
         reason_display = f" [{label}]"
+    timing_str = f" ({timing_insight})" if timing_insight else ""
     console.print(
         f"  [green]\u2713[/green] Completed via {colored_backend(backend_name)}{model_display} "
-        f"in {duration:.1f}s{reason_display}"
+        f"in {duration:.1f}s{timing_str}{reason_display}"
     )
 
     # Cost line with savings
@@ -77,6 +81,11 @@ def show_footer(
         )
     else:
         console.print(f"  [green]\u2713[/green] Audit logged (session {session_short}...)")
+
+    # Daily budget progress
+    if daily_budget and daily_spent is not None:
+        pct = (daily_spent / daily_budget) * 100
+        console.print(f"    [dim]Daily: ${daily_spent:.2f} / ${daily_budget:.2f} ({pct:.0f}%)[/dim]")
 
     console.print(f"[dim]{separator}[/dim]")
 
