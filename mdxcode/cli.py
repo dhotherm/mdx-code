@@ -17,7 +17,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from . import __version__
-from .config import MDX_DIR, load_config
+from .config import MDX_DIR, load_config, save_config
 
 # All other imports (backends, router, review, governance) are lazy —
 # imported inside the functions that use them for fast startup.
@@ -171,6 +171,176 @@ def show_banner(backends: Optional[list] = None) -> None:
     console.print()
 
 
+def show_personalized_banner() -> None:
+    """Show a personalized banner for returning users (5+ tasks)."""
+    from .router.cost_tracker import get_date_range_for_period, get_total_cost
+
+    config = load_config()
+
+    # Get user's name from git config
+    name = ""
+    try:
+        result = subprocess.run(
+            ["git", "config", "user.name"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            full_name = result.stdout.strip()
+            name = full_name.split()[0] if full_name else ""
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    # Time-aware greeting
+    hour = datetime.now().hour
+    if hour < 12:
+        greeting = "Good morning"
+    elif hour < 17:
+        greeting = "Good afternoon"
+    else:
+        greeting = "Good evening"
+
+    greeting_str = f"{greeting}, {name}" if name else greeting
+
+    # Get weekly cost
+    try:
+        since_dt, until_dt = get_date_range_for_period("week")
+        week_cost = get_total_cost(since=since_dt, until=until_dt)
+    except Exception:
+        week_cost = 0.0
+
+    # Get today's tasks from audit
+    today_tasks: list[dict] = []
+    try:
+        from .governance.audit_trail import read_filtered_entries
+
+        audit_dir = Path(config.audit.directory).expanduser()
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_entries = read_filtered_entries(audit_dir, since=today_str)
+        today_tasks = [
+            e for e in today_entries
+            if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))
+        ]
+    except Exception:
+        pass
+
+    # Get backends
+    from .backends.discovery import discover_backends
+
+    backends = asyncio.run(discover_backends())
+    ready = sum(1 for b in backends if b.healthy)
+
+    console.print()
+    console.print(f"  [bold]MDx Code[/bold] v{__version__}")
+    console.print(f"  {greeting_str}. ", end="")
+
+    stats_parts = []
+    if today_tasks:
+        stats_parts.append(f"{len(today_tasks)} tasks today")
+    if week_cost > 0:
+        stats_parts.append(f"${week_cost:.4f} this week")
+    stats_parts.append(f"{ready} backends active")
+
+    console.print("[dim]" + " · ".join(stats_parts) + "[/dim]")
+
+    # Show recent tasks (last 3)
+    if today_tasks:
+        console.print()
+        console.print("  [dim]Recent:[/dim]")
+        for entry in today_tasks[-3:]:
+            task = entry.get("task", "?")
+            if len(task) > 60:
+                task = task[:57] + "..."
+            backend_name = entry.get("backend", "?")
+            console.print(f"    [dim]·[/dim] \"{task}\" [dim]via {backend_name.title()}[/dim]")
+
+    console.print()
+
+
+async def _run_first_time_setup() -> None:
+    """Interactive first-run setup wizard."""
+    from .backends.discovery import KNOWN_CLIS, discover_backends
+
+    console.print()
+    console.print("  [bold]Welcome to MDx Code[/bold] — The AI Engineering Manager")
+    console.print()
+    console.print("  [dim]Let's get you set up. This takes about 30 seconds.[/dim]")
+    console.print()
+
+    # Phase 1: Detect backends with live feedback
+    console.print("  [bold]Detecting your AI coding tools...[/bold]")
+    console.print()
+
+    backends = await discover_backends()
+    ready_count = 0
+
+    for b in backends:
+        display_name = KNOWN_CLIS.get(b.name, b.name.title())
+        if b.healthy:
+            auth_str = "authenticated" if b.authenticated else ""
+            console.print(f"    [green]✓[/green] {display_name:<16} {b.version:<14} {auth_str}")
+            ready_count += 1
+        elif b.version != "not installed":
+            console.print(f"    [yellow]⚠[/yellow] {display_name:<16} {b.version:<14} not authenticated")
+        else:
+            console.print(f"    [dim]✗ {display_name:<16} not found[/dim]")
+
+    console.print()
+    if ready_count == 0:
+        console.print("  [red]No backends detected.[/red] Install at least one:")
+        console.print("    npm install -g @anthropic-ai/claude-code")
+        console.print("    npm install -g @google/gemini-cli")
+        console.print("    npm install -g @openai/codex")
+        console.print()
+        return
+
+    if ready_count == 1:
+        console.print(f"  [green]{ready_count} backend ready.[/green]")
+    else:
+        console.print(f"  [green]{ready_count} backends ready.[/green] Smart routing is available.")
+
+    console.print()
+
+    # Phase 2: Pick strategy (only if multiple backends)
+    config = load_config()
+
+    if ready_count > 1:
+        console.print("  [bold]Pick your default routing strategy:[/bold]")
+        console.print()
+        console.print("    [bold][1][/bold] Balanced         Best quality-per-dollar [green](recommended)[/green]")
+        console.print("    [bold][2][/bold] Quality First    Always use the strongest model")
+        console.print("    [bold][3][/bold] Cost Optimized   Minimize spend")
+        console.print()
+
+        choice = console.input("  Choose [1-3]: ").strip()
+
+        strategy_map = {"1": "balanced", "2": "quality_first", "3": "cost_optimized"}
+        config.routing_strategy = strategy_map.get(choice, "balanced")
+        console.print()
+    else:
+        config.routing_strategy = "balanced"
+
+    # Phase 3: Save config
+    config.first_run_complete = True
+    save_config(config)
+    console.print("  [green]✓[/green] Config saved to ~/.mdx/config.yaml")
+
+    # Phase 4: Show essential commands
+    console.print()
+    console.print("  [bold]You're ready. Here's what MDx Code can do:[/bold]")
+    console.print()
+    console.print('    [bold]mdx "fix the login bug"[/bold]     Routes to the best backend')
+    console.print("    [bold]mdx review src/[/bold]             Multi-model code review")
+    console.print("    [bold]mdx cost[/bold]                    See what you're spending")
+    console.print("    [bold]mdx undo[/bold]                    Revert the last change")
+    console.print()
+
+    # Phase 5: Drop into first task
+    console.print("  [dim]Try it now — type a task:[/dim]")
+    task_input = console.input("  → ")
+    if task_input.strip():
+        await _execute_task(task_input.strip())
+
+
 def _show_routing_line(
     backend_name: str,
     reason: str,
@@ -224,10 +394,21 @@ def main(
 
     # If no subcommand is being invoked, show banner + interactive prompt
     if ctx.invoked_subcommand is None:
-        from .backends.discovery import discover_backends
+        config = load_config()
 
-        backends = asyncio.run(discover_backends())
-        show_banner(backends)
+        # First-run wizard
+        if not config.first_run_complete:
+            asyncio.run(_run_first_time_setup())
+            raise typer.Exit()
+
+        # Personalized banner for power users (5+ tasks)
+        if config.task_count >= 5:
+            show_personalized_banner()
+        else:
+            from .backends.discovery import discover_backends
+
+            backends = asyncio.run(discover_backends())
+            show_banner(backends)
 
         task_input = console.input("[bold]What do you want to work on?[/bold] \u2192 ")
         if task_input.strip():
@@ -652,6 +833,14 @@ async def _execute_task(
         except Exception:
             pass
 
+    # Increment task count for onboarding tips
+    if status_val == "success":
+        config.task_count = (config.task_count or 0) + 1
+        try:
+            save_config(config)
+        except Exception:
+            pass  # Config save should never block the user
+
     # Show footer
     if config.display.show_footer:
         show_footer(
@@ -669,6 +858,7 @@ async def _execute_task(
             timing_insight=timing_insight,
             daily_budget=effective_budget,
             daily_spent=daily_spent,
+            task_count=config.task_count,
         )
 
 

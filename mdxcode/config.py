@@ -58,6 +58,8 @@ class MdxConfig(BaseModel):
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     max_cost_per_task: Optional[float] = None
     daily_budget: Optional[float] = None
+    first_run_complete: bool = False
+    task_count: int = 0
 
 
 class ProjectConfig(BaseModel):

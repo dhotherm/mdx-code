@@ -31,6 +31,7 @@ def show_footer(
     timing_insight: Optional[str] = None,
     daily_budget: Optional[float] = None,
     daily_spent: Optional[float] = None,
+    task_count: int = 0,
 ) -> None:
     """Display the MDx Code footer after task completion."""
     width = min(console.width, 52)
@@ -88,6 +89,18 @@ def show_footer(
         console.print(f"    [dim]Daily: ${daily_spent:.2f} / ${daily_budget:.2f} ({pct:.0f}%)[/dim]")
 
     console.print(f"[dim]{separator}[/dim]")
+
+    # Contextual tips for new users (first 3 tasks)
+    _ONBOARDING_TIPS = {
+        1: "\U0001f4a1 [dim]Tip: Run [bold]mdx cost[/bold] to see your spending dashboard[/dim]",
+        2: "\U0001f4a1 [dim]Tip: Run [bold]mdx review --last[/bold] to get a second opinion on that change[/dim]",
+        3: "\U0001f4a1 [dim]Tip: Run [bold]mdx undo[/bold] if you want to revert what just happened[/dim]",
+    }
+
+    tip = _ONBOARDING_TIPS.get(task_count)
+    if tip:
+        console.print()
+        console.print(f"  {tip}")
 
     # Terminal bell for completed tasks (configurable)
     from ..config import load_config

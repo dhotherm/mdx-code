@@ -21,7 +21,15 @@ $ mdx review src/auth/
   Neither model alone found all 5 real issues.
 ```
 
-## Install
+## Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dhotherm/mdx-code/main/install.sh | bash
+```
+
+First-run wizard guides you through setup automatically.
+
+### Manual Install
 
 ```bash
 pip install -e .

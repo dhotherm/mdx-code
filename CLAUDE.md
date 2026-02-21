@@ -15,6 +15,12 @@ It wraps them with orchestration. Don't create tools or agent loops.
 - `review/` — Adversarial multi-model review (Session 4)
 - `governance/` — Policy engine, audit trail, compliance
 
+## Quick Install
+```bash
+curl -fsSL https://raw.githubusercontent.com/dhotherm/mdx-code/main/install.sh | bash
+```
+First-run wizard guides you through setup automatically.
+
 ## Tech Stack
 - Python 3.11+, Typer + Rich (CLI), asyncio (subprocesses), Pydantic (models)
 
