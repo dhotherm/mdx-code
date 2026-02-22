@@ -19,9 +19,7 @@ class AuditEntry(BaseModel):
 
     entry_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     chain_hash: str = ""
-    timestamp: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     session_id: str = ""
     task: str = ""
     backend: str = ""
@@ -251,11 +249,21 @@ def export_entries_csv(entries: list[dict]) -> str:
     """
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "timestamp", "type", "task", "backend", "model", "files_modified",
-        "policy_name", "policy_compliant", "review_conducted", "findings_count",
-        "cost_usd",
-    ])
+    writer.writerow(
+        [
+            "timestamp",
+            "type",
+            "task",
+            "backend",
+            "model",
+            "files_modified",
+            "policy_name",
+            "policy_compliant",
+            "review_conducted",
+            "findings_count",
+            "cost_usd",
+        ]
+    )
 
     for entry in entries:
         task = entry.get("task", "")
@@ -274,19 +282,21 @@ def export_entries_csv(entries: list[dict]) -> str:
         review_conducted = "yes" if entry_type == "review" else "no"
         findings_count = policy_eval.get("findings_count", "")
 
-        writer.writerow([
-            entry.get("timestamp", ""),
-            entry_type,
-            task,
-            entry.get("backend", ""),
-            entry.get("model", ""),
-            files,
-            policy_names,
-            policy_compliant,
-            review_conducted,
-            findings_count,
-            entry.get("cost_usd", ""),
-        ])
+        writer.writerow(
+            [
+                entry.get("timestamp", ""),
+                entry_type,
+                task,
+                entry.get("backend", ""),
+                entry.get("model", ""),
+                files,
+                policy_names,
+                policy_compliant,
+                review_conducted,
+                findings_count,
+                entry.get("cost_usd", ""),
+            ]
+        )
 
     return output.getvalue()
 
@@ -306,7 +316,8 @@ def get_average_duration(
 
     # Filter to successful task executions only
     filtered = [
-        e for e in entries
+        e
+        for e in entries
         if e.get("status") == "success"
         and not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))
     ]

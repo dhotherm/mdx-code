@@ -10,7 +10,11 @@ from mdxcode.backends.claude import ClaudeBackend
 from mdxcode.backends.codex import CodexBackend
 from mdxcode.backends.gemini import GeminiBackend
 from mdxcode.backends.opencode import OpenCodeBackend
-from mdxcode.backends.discovery import discover_backends, get_best_backend, invalidate_discovery_cache
+from mdxcode.backends.discovery import (
+    discover_backends,
+    get_best_backend,
+    invalidate_discovery_cache,
+)
 
 
 class TestClaudeBackend:
@@ -86,19 +90,27 @@ class TestDiscovery:
     async def test_discovers_claude(self):
         with (
             patch.object(
-                ClaudeBackend, "get_info", new_callable=AsyncMock,
+                ClaudeBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("claude"),
             ),
             patch.object(
-                CodexBackend, "get_info", new_callable=AsyncMock,
+                CodexBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("codex", healthy=False),
             ),
             patch.object(
-                GeminiBackend, "get_info", new_callable=AsyncMock,
+                GeminiBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("gemini", healthy=False),
             ),
             patch.object(
-                OpenCodeBackend, "get_info", new_callable=AsyncMock,
+                OpenCodeBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("opencode", healthy=False),
             ),
         ):
@@ -111,19 +123,27 @@ class TestDiscovery:
     async def test_discovers_multiple_backends(self):
         with (
             patch.object(
-                ClaudeBackend, "get_info", new_callable=AsyncMock,
+                ClaudeBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("claude"),
             ),
             patch.object(
-                CodexBackend, "get_info", new_callable=AsyncMock,
+                CodexBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("codex"),
             ),
             patch.object(
-                GeminiBackend, "get_info", new_callable=AsyncMock,
+                GeminiBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("gemini", healthy=False),
             ),
             patch.object(
-                OpenCodeBackend, "get_info", new_callable=AsyncMock,
+                OpenCodeBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("opencode", healthy=False),
             ),
         ):
@@ -138,19 +158,27 @@ class TestDiscovery:
     async def test_no_backends_healthy(self):
         with (
             patch.object(
-                ClaudeBackend, "get_info", new_callable=AsyncMock,
+                ClaudeBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("claude", healthy=False),
             ),
             patch.object(
-                CodexBackend, "get_info", new_callable=AsyncMock,
+                CodexBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("codex", healthy=False),
             ),
             patch.object(
-                GeminiBackend, "get_info", new_callable=AsyncMock,
+                GeminiBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("gemini", healthy=False),
             ),
             patch.object(
-                OpenCodeBackend, "get_info", new_callable=AsyncMock,
+                OpenCodeBackend,
+                "get_info",
+                new_callable=AsyncMock,
                 return_value=self._make_info("opencode", healthy=False),
             ),
         ):
@@ -208,7 +236,9 @@ class TestGetBestBackend:
 
     @pytest.mark.asyncio
     async def test_opencode_not_executable(self):
-        with patch.object(OpenCodeBackend, "is_available", new_callable=AsyncMock, return_value=True):
+        with patch.object(
+            OpenCodeBackend, "is_available", new_callable=AsyncMock, return_value=True
+        ):
             backend, reason = await get_best_backend("opencode")
             assert backend is None
             assert reason == "user_specified"

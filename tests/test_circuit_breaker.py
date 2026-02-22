@@ -7,7 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from mdxcode.backends.circuit_breaker import CircuitBreaker, get_circuit_breaker, reset_circuit_breaker
+from mdxcode.backends.circuit_breaker import (
+    CircuitBreaker,
+    get_circuit_breaker,
+    reset_circuit_breaker,
+)
 
 
 class TestCircuitBreaker:
@@ -206,6 +210,7 @@ class TestCircuitBreakerPersistence:
 
         # Write state with a last_failure far in the past
         from datetime import datetime, timezone, timedelta
+
         old_time = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
         data = {
             "gemini": {

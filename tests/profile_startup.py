@@ -28,7 +28,8 @@ def profile_cold_start():
         start = time.monotonic()
         result = subprocess.run(
             ["mdx", "--version"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         elapsed = (time.monotonic() - start) * 1000
@@ -154,6 +155,7 @@ def profile_io():
     # Config load
     start = time.monotonic()
     from mdxcode.config import load_config
+
     config = load_config()
     config_ms = (time.monotonic() - start) * 1000
     print(f"    Config load:        {config_ms:>6.1f}ms")
@@ -161,6 +163,7 @@ def profile_io():
     # Circuit breaker load
     start = time.monotonic()
     from mdxcode.backends.circuit_breaker import get_circuit_breaker
+
     cb = get_circuit_breaker()
     cb_ms = (time.monotonic() - start) * 1000
     print(f"    Circuit breaker:    {cb_ms:>6.1f}ms")
@@ -168,6 +171,7 @@ def profile_io():
     # SQLite cost read
     start = time.monotonic()
     from mdxcode.router.cost_tracker import get_date_range_for_period, get_total_cost
+
     since, until = get_date_range_for_period("today")
     total = get_total_cost(since=since, until=until)
     cost_ms = (time.monotonic() - start) * 1000
@@ -176,6 +180,7 @@ def profile_io():
     # Audit read (recent entries)
     start = time.monotonic()
     from mdxcode.governance.audit_trail import read_recent_entries
+
     entries = read_recent_entries(count=10)
     audit_ms = (time.monotonic() - start) * 1000
     print(f"    Audit read (10):    {audit_ms:>6.1f}ms")

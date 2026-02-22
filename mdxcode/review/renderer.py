@@ -162,9 +162,7 @@ def _render_rich(result: AdversarialReviewResult) -> None:
     n_backends = len(backends_used)
 
     # Header panel
-    backends_display = ", ".join(
-        _get_backend_display_name(name) for name in backends_used
-    )
+    backends_display = ", ".join(_get_backend_display_name(name) for name in backends_used)
     header_lines = [
         "",
         f"  Reviewed: {result.target.description}",
@@ -220,7 +218,9 @@ def _render_rich(result: AdversarialReviewResult) -> None:
     _render_summary(result)
 
 
-def _render_confirmed(cf: ConfirmedFinding, n_backends: int, result: AdversarialReviewResult) -> None:
+def _render_confirmed(
+    cf: ConfirmedFinding, n_backends: int, result: AdversarialReviewResult
+) -> None:
     """Render a confirmed finding."""
     backends_str = "/".join(str(n) for n in [n_backends, n_backends])
     console.print()
@@ -255,9 +255,7 @@ def _render_unique(uf: UniqueFinding) -> None:
     """Render a unique finding."""
     console.print()
     backend_display = _get_backend_display_name(uf.found_by)
-    console.print(
-        f"  [yellow]\U0001f7e1 UNIQUE \u2014 Found by {backend_display} only[/yellow]"
-    )
+    console.print(f"  [yellow]\U0001f7e1 UNIQUE \u2014 Found by {backend_display} only[/yellow]")
     console.print()
 
     f = uf.finding
@@ -361,7 +359,7 @@ def _render_summary(result: AdversarialReviewResult) -> None:
         location = _format_finding_location(first_confirmed)
         console.print()
         console.print(
-            f'  [dim]\u2192 Fix confirmed issue? Run:[/dim] '
+            f"  [dim]\u2192 Fix confirmed issue? Run:[/dim] "
             f'[bold]mdx "fix {first_confirmed.title.lower()} in {first_confirmed.file}"[/bold]'
         )
         console.print()

@@ -185,10 +185,13 @@ class TestEvaluatePolicies:
         """When multiple policies match, strictest requirements win."""
         policy_file = load_policy_file(policy_dir / ".mdxpolicy")
         # This matches both infra (min_reviewers=1) and we'll add a sql match
-        result = evaluate_policies(policy_file, [
-            "terraform/main.tf",
-            "migrations/001.sql",
-        ])
+        result = evaluate_policies(
+            policy_file,
+            [
+                "terraform/main.tf",
+                "migrations/001.sql",
+            ],
+        )
 
         assert result.requires_review is True
         assert result.requires_approval is True  # From migrations policy
@@ -198,10 +201,13 @@ class TestEvaluatePolicies:
 
     def test_multiple_files_multiple_policies(self, policy_dir):
         policy_file = load_policy_file(policy_dir / ".mdxpolicy")
-        result = evaluate_policies(policy_file, [
-            "src/app/auth/login.py",
-            "terraform/main.tf",
-        ])
+        result = evaluate_policies(
+            policy_file,
+            [
+                "src/app/auth/login.py",
+                "terraform/main.tf",
+            ],
+        )
 
         assert result.requires_review is True
         assert result.requires_approval is True

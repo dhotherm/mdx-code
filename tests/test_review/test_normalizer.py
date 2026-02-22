@@ -127,20 +127,22 @@ class TestNormalizeFindings:
     """Test the full normalize_findings function."""
 
     def test_clean_json(self):
-        raw = json.dumps({
-            "findings": [
-                {
-                    "file": "test.py",
-                    "line": 10,
-                    "severity": "high",
-                    "category": "security",
-                    "title": "SQL Injection",
-                    "description": "Unsanitized input in query",
-                    "cwe_id": "CWE-89",
-                    "suggestion": "Use parameterized queries",
-                }
-            ]
-        })
+        raw = json.dumps(
+            {
+                "findings": [
+                    {
+                        "file": "test.py",
+                        "line": 10,
+                        "severity": "high",
+                        "category": "security",
+                        "title": "SQL Injection",
+                        "description": "Unsanitized input in query",
+                        "cwe_id": "CWE-89",
+                        "suggestion": "Use parameterized queries",
+                    }
+                ]
+            }
+        )
         findings = normalize_findings(raw, "claude")
         assert len(findings) == 1
         f = findings[0]
@@ -188,14 +190,28 @@ Let me know if you need more details."""
         assert findings == []
 
     def test_multiple_findings(self):
-        raw = json.dumps({
-            "findings": [
-                {"file": "a.py", "line": 1, "severity": "high", "category": "security",
-                 "title": "Issue 1", "description": "Desc 1"},
-                {"file": "b.py", "line": 2, "severity": "low", "category": "quality",
-                 "title": "Issue 2", "description": "Desc 2"},
-            ]
-        })
+        raw = json.dumps(
+            {
+                "findings": [
+                    {
+                        "file": "a.py",
+                        "line": 1,
+                        "severity": "high",
+                        "category": "security",
+                        "title": "Issue 1",
+                        "description": "Desc 1",
+                    },
+                    {
+                        "file": "b.py",
+                        "line": 2,
+                        "severity": "low",
+                        "category": "quality",
+                        "title": "Issue 2",
+                        "description": "Desc 2",
+                    },
+                ]
+            }
+        )
         findings = normalize_findings(raw, "claude")
         assert len(findings) == 2
 
@@ -206,29 +222,56 @@ Let me know if you need more details."""
 
     def test_alternative_cwe_field_name(self):
         """Some models use 'cwe' instead of 'cwe_id'."""
-        raw = json.dumps({
-            "findings": [
-                {"file": "a.py", "line": 1, "severity": "high", "category": "security",
-                 "title": "Bug", "description": "Desc", "cwe": "CWE-79"}
-            ]
-        })
+        raw = json.dumps(
+            {
+                "findings": [
+                    {
+                        "file": "a.py",
+                        "line": 1,
+                        "severity": "high",
+                        "category": "security",
+                        "title": "Bug",
+                        "description": "Desc",
+                        "cwe": "CWE-79",
+                    }
+                ]
+            }
+        )
         findings = normalize_findings(raw, "claude")
         assert len(findings) == 1
         assert findings[0].cwe_id == "CWE-79"
 
     def test_raw_response_preserved(self):
-        raw = json.dumps({"findings": [
-            {"file": "a.py", "line": 1, "severity": "low", "category": "quality",
-             "title": "T", "description": "D"}
-        ]})
+        raw = json.dumps(
+            {
+                "findings": [
+                    {
+                        "file": "a.py",
+                        "line": 1,
+                        "severity": "low",
+                        "category": "quality",
+                        "title": "T",
+                        "description": "D",
+                    }
+                ]
+            }
+        )
         findings = normalize_findings(raw, "claude")
         assert findings[0].raw_response == raw
 
     def test_bare_list_instead_of_object(self):
         """Some models return a bare list instead of {"findings": [...]}."""
-        raw = json.dumps([
-            {"file": "a.py", "line": 1, "severity": "high", "category": "security",
-             "title": "Bug", "description": "Desc"}
-        ])
+        raw = json.dumps(
+            [
+                {
+                    "file": "a.py",
+                    "line": 1,
+                    "severity": "high",
+                    "category": "security",
+                    "title": "Bug",
+                    "description": "Desc",
+                }
+            ]
+        )
         findings = normalize_findings(raw, "claude")
         assert len(findings) == 1

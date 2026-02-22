@@ -165,9 +165,14 @@ class TestCategorizeTask:
     def test_confidence_in_range(self):
         """All confidence scores should be between 0 and 1."""
         tasks = [
-            "Fix the bug", "Write tests", "Review code",
-            "Create a feature", "Refactor module", "Add docs",
-            "Security scan", "Help me",
+            "Fix the bug",
+            "Write tests",
+            "Review code",
+            "Create a feature",
+            "Refactor module",
+            "Add docs",
+            "Security scan",
+            "Help me",
         ]
         for task in tasks:
             result = categorize_task(task)

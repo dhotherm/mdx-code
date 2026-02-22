@@ -58,7 +58,9 @@ def _get_project_context() -> str:
     try:
         branch_proc = subprocess.Popen(
             ["git", "branch", "--show-current"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
     except (FileNotFoundError, OSError):
         pass
@@ -66,7 +68,9 @@ def _get_project_context() -> str:
     try:
         files_proc = subprocess.Popen(
             ["git", "ls-files"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
     except (FileNotFoundError, OSError):
         pass
@@ -99,11 +103,21 @@ def _get_project_context() -> str:
         files = files_output.splitlines()
 
         EXT_TO_LANG = {
-            ".py": "Python", ".ts": "TypeScript", ".tsx": "TypeScript",
-            ".js": "JavaScript", ".jsx": "JavaScript", ".go": "Go",
-            ".rs": "Rust", ".java": "Java", ".kt": "Kotlin",
-            ".rb": "Ruby", ".swift": "Swift", ".cs": "C#",
-            ".cpp": "C++", ".c": "C", ".php": "PHP",
+            ".py": "Python",
+            ".ts": "TypeScript",
+            ".tsx": "TypeScript",
+            ".js": "JavaScript",
+            ".jsx": "JavaScript",
+            ".go": "Go",
+            ".rs": "Rust",
+            ".java": "Java",
+            ".kt": "Kotlin",
+            ".rb": "Ruby",
+            ".swift": "Swift",
+            ".cs": "C#",
+            ".cpp": "C++",
+            ".c": "C",
+            ".php": "PHP",
         }
 
         ext_count: dict[str, int] = {}
@@ -206,7 +220,9 @@ def show_personalized_banner() -> None:
     try:
         result = subprocess.run(
             ["git", "config", "user.name"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             full_name = result.stdout.strip()
@@ -241,7 +257,8 @@ def show_personalized_banner() -> None:
         today_str = datetime.now().strftime("%Y-%m-%d")
         today_entries = read_filtered_entries(audit_dir, since=today_str)
         today_tasks = [
-            e for e in today_entries
+            e
+            for e in today_entries
             if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))
         ]
     except Exception:
@@ -275,7 +292,7 @@ def show_personalized_banner() -> None:
             if len(task) > 60:
                 task = task[:57] + "..."
             backend_name = entry.get("backend", "?")
-            console.print(f"    [dim]·[/dim] \"{task}\" [dim]via {backend_name.title()}[/dim]")
+            console.print(f'    [dim]·[/dim] "{task}" [dim]via {backend_name.title()}[/dim]')
 
     console.print()
 
@@ -305,7 +322,9 @@ async def _run_first_time_setup() -> None:
             console.print(f"    [green]✓[/green] {display_name:<16} {b.version:<14} {auth_str}")
             ready_count += 1
         elif b.version != "not installed":
-            console.print(f"    [yellow]⚠[/yellow] {display_name:<16} {b.version:<14} not authenticated")
+            console.print(
+                f"    [yellow]⚠[/yellow] {display_name:<16} {b.version:<14} not authenticated"
+            )
         else:
             console.print(f"    [dim]✗ {display_name:<16} not found[/dim]")
 
@@ -331,7 +350,9 @@ async def _run_first_time_setup() -> None:
     if ready_count > 1:
         console.print("  [bold]Pick your default routing strategy:[/bold]")
         console.print()
-        console.print("    [bold][1][/bold] Balanced         Best quality-per-dollar [green](recommended)[/green]")
+        console.print(
+            "    [bold][1][/bold] Balanced         Best quality-per-dollar [green](recommended)[/green]"
+        )
         console.print("    [bold][2][/bold] Quality First    Always use the strongest model")
         console.print("    [bold][3][/bold] Cost Optimized   Minimize spend")
         console.print()
@@ -447,12 +468,8 @@ def main(
 def run(
     ctx: typer.Context,
     task_parts: Optional[list[str]] = typer.Argument(None, help="Task to execute"),
-    backend: Optional[str] = typer.Option(
-        None, "--backend", "-b", help="Force a specific backend"
-    ),
-    strategy: Optional[str] = typer.Option(
-        None, "--strategy", "-s", help="Routing strategy"
-    ),
+    backend: Optional[str] = typer.Option(None, "--backend", "-b", help="Force a specific backend"),
+    strategy: Optional[str] = typer.Option(None, "--strategy", "-s", help="Routing strategy"),
     pick: bool = typer.Option(False, "--pick", "-p", help="Interactively pick a backend"),
 ) -> None:
     """Execute a task (hidden command -- invoked automatically)."""
@@ -476,7 +493,10 @@ def run(
 
     asyncio.run(
         _execute_task(
-            task, backend_override=backend, strategy_override=resolved_strategy, pick=pick,
+            task,
+            backend_override=backend,
+            strategy_override=resolved_strategy,
+            pick=pick,
         )
     )
 
@@ -513,7 +533,9 @@ async def _execute_task(
 
     # Determine routing strategy (project config overrides global defaults)
     strategy = strategy_override or (
-        project_config.strategy if project_config and project_config.strategy else config.routing_strategy
+        project_config.strategy
+        if project_config and project_config.strategy
+        else config.routing_strategy
     )
 
     # Determine which backend to use
@@ -530,8 +552,7 @@ async def _execute_task(
     profiles = get_profiles()
     cb = get_circuit_breaker()
     routable_backends = [
-        name for name in backends_available
-        if name != "opencode" and cb.is_available(name)
+        name for name in backends_available if name != "opencode" and cb.is_available(name)
     ]
 
     if user_specified:
@@ -556,9 +577,7 @@ async def _execute_task(
         if backend_override:
             install_hint = INSTALL_INSTRUCTIONS.get(backend_override, "")
             if backend_override == "opencode":
-                console.print(
-                    "[red]OpenCode does not support non-interactive execution.[/red]"
-                )
+                console.print("[red]OpenCode does not support non-interactive execution.[/red]")
                 console.print("Use --backend claude, --backend codex, or --backend gemini.")
             else:
                 console.print(
@@ -576,22 +595,24 @@ async def _execute_task(
         from .output.colors import colored_backend as _cb
 
         console.print()
-        console.print(f"  [bold]Pick a backend for:[/bold] \"{task}\"")
+        console.print(f'  [bold]Pick a backend for:[/bold] "{task}"')
         console.print()
 
         sorted_backends = sorted(
-            routing_decision.scores.items(), key=lambda x: x[1], reverse=True,
+            routing_decision.scores.items(),
+            key=lambda x: x[1],
+            reverse=True,
         )
         for i, (name, score) in enumerate(sorted_backends, 1):
             rec = " [green](recommended)[/green]" if name == routing_decision.backend_name else ""
             profile = profiles.get(name)
             cost_hint = ""
             if profile:
-                avg = (profile.cost_per_1k_tokens["input"] + profile.cost_per_1k_tokens["output"]) / 2
+                avg = (
+                    profile.cost_per_1k_tokens["input"] + profile.cost_per_1k_tokens["output"]
+                ) / 2
                 cost_hint = f"  ~${avg:.3f}/1k tokens"
-            console.print(
-                f"    [{i}] {_cb(name):<20}  score: {score:.2f}{cost_hint}{rec}"
-            )
+            console.print(f"    [{i}] {_cb(name):<20}  score: {score:.2f}{cost_hint}{rec}")
 
         console.print()
         choice = console.input(f"  Choose [1-{len(sorted_backends)}]: ").strip()
@@ -618,9 +639,8 @@ async def _execute_task(
 
     # Check daily budget before executing (Feature 7)
     effective_budget = (
-        (project_config.daily_budget if project_config and project_config.daily_budget else None)
-        or config.daily_budget
-    )
+        project_config.daily_budget if project_config and project_config.daily_budget else None
+    ) or config.daily_budget
     daily_spent: float | None = None
     if effective_budget:
         since_dt, until_dt = get_date_range_for_period("today")
@@ -654,7 +674,10 @@ async def _execute_task(
         output_lower = full_output.lower()
         if any(kw in output_lower for kw in ("rate limit", "429", "too many requests", "quota")):
             error_type = "rate_limit"
-        elif any(kw in output_lower for kw in ("auth", "login", "credential", "token expired", "unauthorized")):
+        elif any(
+            kw in output_lower
+            for kw in ("auth", "login", "credential", "token expired", "unauthorized")
+        ):
             error_type = "auth"
         elif "timed out" in output_lower:
             error_type = "timeout"
@@ -669,10 +692,14 @@ async def _execute_task(
                 f"  [yellow]\U0001f4a1 Session expired. Run `{backend.cli_command}` to re-authenticate.[/yellow]"
             )
         elif error_type == "timeout":
-            console.print("  [yellow]\U0001f4a1 Task timed out. Try breaking it into smaller pieces,[/yellow]")
+            console.print(
+                "  [yellow]\U0001f4a1 Task timed out. Try breaking it into smaller pieces,[/yellow]"
+            )
             console.print("  [yellow]   or use --backend for a faster alternative.[/yellow]")
         elif error_type == "network":
-            console.print("  [yellow]\U0001f4a1 Network error. Check your connection and retry.[/yellow]")
+            console.print(
+                "  [yellow]\U0001f4a1 Network error. Check your connection and retry.[/yellow]"
+            )
         elif error_type == "rate_limit" and not user_specified:
             # Auto-fallback to next best backend
             console.print(
@@ -685,7 +712,8 @@ async def _execute_task(
                     fallback_backend, _ = await get_best_backend(fallback_decision.backend_name)
                     if fallback_backend:
                         _show_routing_line(
-                            fallback_backend.name, "auto-fallback (rate limited)",
+                            fallback_backend.name,
+                            "auto-fallback (rate limited)",
                             category=category.category,
                         )
                         full_output, duration = await stream_output(
@@ -904,7 +932,9 @@ def setup() -> None:
         if b.healthy:
             icon = "  [green]\u2705[/green]"
             auth_str = "authenticated" if b.authenticated else ""
-            console.print(f"  {icon} {KNOWN_CLIS.get(b.name, b.name.title()):<16} {b.version:<14} {auth_str}")
+            console.print(
+                f"  {icon} {KNOWN_CLIS.get(b.name, b.name.title()):<16} {b.version:<14} {auth_str}"
+            )
         elif b.version != "not installed" and b.name == "opencode":
             console.print(
                 f"  [yellow]\u26a0\ufe0f[/yellow]  {KNOWN_CLIS.get(b.name, b.name.title()):<16} {b.version:<14} "
@@ -928,9 +958,9 @@ def setup() -> None:
     ready = sum(1 for b in backends if b.healthy)
     console.print()
     console.print(f"  {ready} backend{'s' if ready != 1 else ''} ready. You can:")
-    console.print("    mdx \"task\"                        \u2192 smart-route to best backend")
-    console.print("    mdx \"task\" --backend codex       \u2192 force specific backend")
-    console.print("    mdx \"task\" --strategy cost        \u2192 cost-optimized routing")
+    console.print('    mdx "task"                        \u2192 smart-route to best backend')
+    console.print('    mdx "task" --backend codex       \u2192 force specific backend')
+    console.print('    mdx "task" --strategy cost        \u2192 cost-optimized routing')
     console.print("    mdx cost                           \u2192 spending dashboard")
     console.print()
 
@@ -972,9 +1002,7 @@ def status() -> None:
         elif hs.details == "not installed":
             console.print(f"    {display_name:<12} [dim]not installed[/dim]")
         else:
-            console.print(
-                f"    {display_name:<12} [yellow]{hs.details}[/yellow]"
-            )
+            console.print(f"    {display_name:<12} [yellow]{hs.details}[/yellow]")
 
     console.print()
 
@@ -1051,9 +1079,7 @@ def cost(
         lines.append("  By backend:")
         for name, amount in sorted(by_backend.items(), key=lambda x: x[1], reverse=True):
             pct = (amount / total * 100) if total > 0 else 0
-            lines.append(
-                f"    {colored_backend(name):<22} ${amount:>8.4f} ({pct:>4.0f}%)"
-            )
+            lines.append(f"    {colored_backend(name):<22} ${amount:>8.4f} ({pct:>4.0f}%)")
         lines.append("")
 
     if savings_val > 0:
@@ -1092,8 +1118,12 @@ def cost(
 def audit(
     count: int = typer.Option(10, "--count", "-n", help="Number of entries to show"),
     path: Optional[str] = typer.Option(None, "--path", help="Filter by working directory path"),
-    since: Optional[str] = typer.Option(None, "--since", help="Filter entries since date (YYYY-MM-DD)"),
-    entry_type: Optional[str] = typer.Option(None, "--type", help="Filter by type (e.g., adversarial_review)"),
+    since: Optional[str] = typer.Option(
+        None, "--since", help="Filter entries since date (YYYY-MM-DD)"
+    ),
+    entry_type: Optional[str] = typer.Option(
+        None, "--type", help="Filter by type (e.g., adversarial_review)"
+    ),
     backend_filter: Optional[str] = typer.Option(None, "--backend", help="Filter by backend name"),
     verify: bool = typer.Option(False, "--verify", help="Verify chain hash integrity"),
     export: Optional[str] = typer.Option(None, "--export", help="Export format: csv or json"),
@@ -1157,8 +1187,11 @@ def audit(
         has_filters = any([since, entry_type, backend_filter, path])
         if has_filters:
             entries = read_filtered_entries(
-                audit_dir, since=since, entry_type=entry_type,
-                backend=backend_filter, path=path,
+                audit_dir,
+                since=since,
+                entry_type=entry_type,
+                backend=backend_filter,
+                path=path,
             )
         else:
             entries = read_filtered_entries(audit_dir)
@@ -1172,7 +1205,9 @@ def audit(
         lines.append("")
         lines.append(f"  Total actions: [bold]{s['total_actions']}[/bold]")
         lines.append(f"  Tasks: {s['tasks']}    Reviews: {s['reviews']}")
-        lines.append(f"  Policy checks: {s['policy_checks']}    Violations: {s['policy_violations']}")
+        lines.append(
+            f"  Policy checks: {s['policy_checks']}    Violations: {s['policy_violations']}"
+        )
         lines.append(f"  Total cost: [bold]${s['total_cost']:.2f}[/bold]")
         lines.append("")
         if s["by_backend"]:
@@ -1182,15 +1217,20 @@ def audit(
             lines.append("")
 
         content = "\n".join(lines)
-        panel = Panel(content, title="Audit Statistics", border_style="blue", width=min(console.width, 56))
+        panel = Panel(
+            content, title="Audit Statistics", border_style="blue", width=min(console.width, 56)
+        )
         console.print(panel)
         return
 
     # --export mode: output CSV or JSON
     if export:
         entries = read_filtered_entries(
-            audit_dir, since=since, entry_type=entry_type,
-            backend=backend_filter, path=path,
+            audit_dir,
+            since=since,
+            entry_type=entry_type,
+            backend=backend_filter,
+            path=path,
         )
         if export.lower() == "csv":
             csv_text = export_entries_csv(entries)
@@ -1205,8 +1245,11 @@ def audit(
     has_filters = any([since, entry_type, backend_filter, path])
     if has_filters:
         entries = read_filtered_entries(
-            audit_dir, since=since, entry_type=entry_type,
-            backend=backend_filter, path=path,
+            audit_dir,
+            since=since,
+            entry_type=entry_type,
+            backend=backend_filter,
+            path=path,
         )
         # Limit to count
         entries = entries[-count:] if len(entries) > count else entries
@@ -1215,7 +1258,7 @@ def audit(
 
     if not entries:
         console.print("[dim]No audit entries found.[/dim]")
-        console.print("Run a task with [bold]mdx \"your task\"[/bold] to generate audit entries.")
+        console.print('Run a task with [bold]mdx "your task"[/bold] to generate audit entries.')
         return
 
     table = Table(title=f"Recent Audit Entries (last {count})", show_header=True)
@@ -1244,9 +1287,13 @@ def audit(
         reason = entry.get("routing_reason") or entry.get("backend_selection_reason", "")
 
         table.add_row(
-            ts, colored_backend(backend_name), task_display, dur,
+            ts,
+            colored_backend(backend_name),
+            task_display,
+            dur,
             f"[{status_style}]{status_val}[/{status_style}]",
-            cost_str, reason,
+            cost_str,
+            reason,
         )
 
     console.print(table)
@@ -1273,7 +1320,11 @@ def history(
     entries = read_recent_entries(count=min(count * 2, 100))
 
     # Filter out non-task entries (policy checks, reviews logged separately)
-    entries = [e for e in entries if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))]
+    entries = [
+        e
+        for e in entries
+        if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))
+    ]
 
     if search:
         search_lower = search.lower()
@@ -1346,7 +1397,11 @@ def summary(
     entries = read_filtered_entries(audit_dir, since=since_dt.strftime("%Y-%m-%d"))
 
     # Filter to actual tasks
-    tasks = [e for e in entries if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))]
+    tasks = [
+        e
+        for e in entries
+        if not e.get("task", "").startswith(("policy_check:", "adversarial_review:"))
+    ]
     reviews = [e for e in entries if e.get("task", "").startswith("adversarial_review:")]
 
     if not tasks and not reviews:
@@ -1371,7 +1426,9 @@ def summary(
     console.print(f"  Tasks completed: [bold]{successful}[/bold] / {total_tasks}")
     console.print(f"  Reviews run: [bold]{len(reviews)}[/bold]")
     console.print(f"  Total AI time: [bold]{minutes}m {seconds:02d}s[/bold]")
-    console.print(f"  Backends used: {', '.join(colored_backend(b) for b in sorted(backends_used))}")
+    console.print(
+        f"  Backends used: {', '.join(colored_backend(b) for b in sorted(backends_used))}"
+    )
     console.print(f"  Total cost: [bold]${total_cost:.4f}[/bold]")
     if total_savings > 0:
         console.print(f"  Smart routing saved: [green]${total_savings:.4f}[/green]")
@@ -1438,15 +1495,19 @@ def _save_last_task(task: str, backend_name: str, cwd: Path, output: str = "") -
 
         # Try multiple diff strategies — backends may or may not auto-commit
         diff_commands = [
-            ["git", "diff", "HEAD"],           # Uncommitted changes
-            ["git", "diff", "HEAD~1"],          # Last commit (auto-committed by backend)
-            ["git", "diff", "--cached"],        # Staged changes
+            ["git", "diff", "HEAD"],  # Uncommitted changes
+            ["git", "diff", "HEAD~1"],  # Last commit (auto-committed by backend)
+            ["git", "diff", "--cached"],  # Staged changes
         ]
 
         for cmd in diff_commands:
             try:
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, cwd=str(cwd), timeout=10,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(cwd),
+                    timeout=10,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     diff = result.stdout
@@ -1454,7 +1515,11 @@ def _save_last_task(task: str, backend_name: str, cwd: Path, output: str = "") -
                     name_cmd = cmd.copy()
                     name_cmd.insert(2, "--name-only")
                     result2 = subprocess.run(
-                        name_cmd, capture_output=True, text=True, cwd=str(cwd), timeout=10,
+                        name_cmd,
+                        capture_output=True,
+                        text=True,
+                        cwd=str(cwd),
+                        timeout=10,
                     )
                     files_modified = [f for f in result2.stdout.strip().splitlines() if f]
                     break
@@ -1500,7 +1565,7 @@ def replay() -> None:
     task_data = _load_last_task()
     if not task_data or not task_data.get("output"):
         console.print("[dim]No recent task output to replay.[/dim]")
-        console.print("Run a task first: [bold]mdx \"your task\"[/bold]")
+        console.print('Run a task first: [bold]mdx "your task"[/bold]')
         raise typer.Exit(1)
 
     task = task_data.get("task", "unknown")
@@ -1508,7 +1573,7 @@ def replay() -> None:
     timestamp = task_data.get("timestamp", "")[:19]
 
     console.print()
-    console.print(f"  [dim]Replaying: \"{task}\" via {backend.title()} at {timestamp}[/dim]")
+    console.print(f'  [dim]Replaying: "{task}" via {backend.title()} at {timestamp}[/dim]')
     console.print()
 
     output = task_data["output"]
@@ -1542,7 +1607,7 @@ def undo() -> None:
         raise typer.Exit(1)
 
     console.print()
-    console.print(f"  [bold]Undo last task:[/bold] \"{task}\" via {backend.title()}")
+    console.print(f'  [bold]Undo last task:[/bold] "{task}" via {backend.title()}')
     console.print(f"  Files affected: {len(files)}")
     for f in files[:5]:
         console.print(f"    {f}")
@@ -1550,7 +1615,9 @@ def undo() -> None:
         console.print(f"    [dim]...and {len(files) - 5} more[/dim]")
     console.print()
 
-    confirm = console.input("  [bold yellow]Revert these changes?[/bold yellow] [y/N] ").strip().lower()
+    confirm = (
+        console.input("  [bold yellow]Revert these changes?[/bold yellow] [y/N] ").strip().lower()
+    )
     if confirm != "y":
         console.print("  [dim]Undo cancelled.[/dim]")
         raise typer.Exit(0)
@@ -1560,7 +1627,10 @@ def undo() -> None:
         # Check if there are uncommitted changes (backend didn't auto-commit)
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, cwd=cwd, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=10,
         )
         uncommitted = [f for f in result.stdout.strip().splitlines() if f]
 
@@ -1568,19 +1638,27 @@ def undo() -> None:
             # Uncommitted changes — just git checkout the files
             subprocess.run(
                 ["git", "checkout", "HEAD", "--"] + files,
-                capture_output=True, text=True, cwd=cwd, timeout=10,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=10,
             )
             console.print("  [green]\u2713[/green] Reverted uncommitted changes.")
         else:
             # Changes were committed — revert the last commit
             result = subprocess.run(
                 ["git", "revert", "HEAD", "--no-edit"],
-                capture_output=True, text=True, cwd=cwd, timeout=30,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=30,
             )
             if result.returncode == 0:
                 console.print("  [green]\u2713[/green] Reverted last commit.")
             else:
-                console.print(f"  [red]\u2717[/red] Git revert failed: {result.stderr.strip()[:80]}")
+                console.print(
+                    f"  [red]\u2717[/red] Git revert failed: {result.stderr.strip()[:80]}"
+                )
                 console.print("  [dim]Try manually: git revert HEAD[/dim]")
                 raise typer.Exit(1)
 
@@ -1596,7 +1674,9 @@ def _get_git_diff(diff_ref: str) -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "diff", diff_ref],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout
@@ -1609,8 +1689,12 @@ def _get_git_diff(diff_ref: str) -> Optional[str]:
 def review(
     paths: Optional[list[str]] = typer.Argument(None, help="Files or directories to review"),
     last: bool = typer.Option(False, "--last", help="Review the last change MDx made"),
-    diff: Optional[str] = typer.Option(None, "--diff", help="Review a git diff (e.g., HEAD~1, main..feature)"),
-    staged: bool = typer.Option(False, "--staged", help="Review staged git changes (for pre-commit)"),
+    diff: Optional[str] = typer.Option(
+        None, "--diff", help="Review a git diff (e.g., HEAD~1, main..feature)"
+    ),
+    staged: bool = typer.Option(
+        False, "--staged", help="Review staged git changes (for pre-commit)"
+    ),
     backend: Optional[str] = typer.Option(
         None, "--backend", "-b", help="Comma-separated backends (e.g., 'claude,codex')"
     ),
@@ -1652,7 +1736,9 @@ async def _run_review(
         try:
             result = subprocess.run(
                 ["git", "diff", "--cached"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 console.print("[yellow]No staged changes to review.[/yellow]")
@@ -1666,7 +1752,9 @@ async def _run_review(
     elif last:
         task_data = _load_last_task()
         if not task_data or not task_data.get("diff"):
-            console.print("[yellow]No recent changes to review. Run a task first, then try again.[/yellow]")
+            console.print(
+                "[yellow]No recent changes to review. Run a task first, then try again.[/yellow]"
+            )
             raise typer.Exit(1)
         target = prepare_target_from_diff(task_data["diff"], diff_ref="last task")
         if not target.content.strip():
@@ -1775,7 +1863,10 @@ def update() -> None:
             console.print(f"  Updating {name.title()}...", end=" ")
             try:
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=120,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
                 )
                 if result.returncode == 0:
                     console.print("[green]\u2713[/green]")
@@ -1852,7 +1943,9 @@ def policy_default(ctx: typer.Context) -> None:
     lines.append("")
 
     content = "\n".join(lines)
-    panel = Panel(content, title="Active Policies", border_style="green", width=min(console.width, 70))
+    panel = Panel(
+        content, title="Active Policies", border_style="green", width=min(console.width, 70)
+    )
     console.print(panel)
 
 
@@ -2014,7 +2107,9 @@ def hook_uninstall() -> None:
 
     content = hook_path.read_text()
     if HOOK_MARKER not in content:
-        console.print("[yellow]Pre-commit hook exists but was not installed by MDx. Not removing.[/yellow]")
+        console.print(
+            "[yellow]Pre-commit hook exists but was not installed by MDx. Not removing.[/yellow]"
+        )
         return
 
     hook_path.unlink()
@@ -2046,7 +2141,9 @@ def hook_check() -> None:
     try:
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-only"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         staged_files = [f for f in result.stdout.strip().splitlines() if f]
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -2219,5 +2316,5 @@ def mcp_config(
         return
 
     console.print()
-    console.print("  [dim]Ensure MDx Code is installed: pip install -e \".[mcp]\"[/dim]")
+    console.print('  [dim]Ensure MDx Code is installed: pip install -e ".[mcp]"[/dim]')
     console.print()

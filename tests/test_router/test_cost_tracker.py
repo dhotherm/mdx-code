@@ -257,12 +257,27 @@ class TestGetTopTasks:
     """Tests for top tasks by cost."""
 
     def test_top_tasks_sorted_by_cost(self, db_path):
-        record_cost(session_id="s1", backend="claude", cost_usd=1.0,
-                     task_summary="Small task", db_path=db_path)
-        record_cost(session_id="s2", backend="claude", cost_usd=5.0,
-                     task_summary="Big task", db_path=db_path)
-        record_cost(session_id="s3", backend="claude", cost_usd=3.0,
-                     task_summary="Medium task", db_path=db_path)
+        record_cost(
+            session_id="s1",
+            backend="claude",
+            cost_usd=1.0,
+            task_summary="Small task",
+            db_path=db_path,
+        )
+        record_cost(
+            session_id="s2",
+            backend="claude",
+            cost_usd=5.0,
+            task_summary="Big task",
+            db_path=db_path,
+        )
+        record_cost(
+            session_id="s3",
+            backend="claude",
+            cost_usd=3.0,
+            task_summary="Medium task",
+            db_path=db_path,
+        )
 
         top = get_top_tasks(limit=2, db_path=db_path)
         assert len(top) == 2
@@ -271,8 +286,7 @@ class TestGetTopTasks:
 
     def test_top_tasks_limit(self, db_path):
         for i in range(10):
-            record_cost(session_id=f"s{i}", backend="claude",
-                         cost_usd=float(i), db_path=db_path)
+            record_cost(session_id=f"s{i}", backend="claude", cost_usd=float(i), db_path=db_path)
 
         top = get_top_tasks(limit=3, db_path=db_path)
         assert len(top) == 3

@@ -85,10 +85,34 @@ def prepare_target_from_paths(paths: list[str]) -> ReviewTarget:
     For directories: reads all supported source files recursively.
     """
     source_extensions = {
-        ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java",
-        ".rb", ".php", ".c", ".cpp", ".h", ".hpp", ".cs", ".swift",
-        ".kt", ".scala", ".sh", ".bash", ".yaml", ".yml", ".json",
-        ".toml", ".sql", ".html", ".css", ".scss",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".php",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".sh",
+        ".bash",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
+        ".sql",
+        ".html",
+        ".css",
+        ".scss",
     }
 
     files_content: list[str] = []
@@ -252,10 +276,7 @@ async def run_review(
     cwd = Path.cwd()
 
     # Run ALL backends in PARALLEL
-    tasks = [
-        _run_single_review(b, full_prompt, cwd, timeout=timeout)
-        for b in backend_instances
-    ]
+    tasks = [_run_single_review(b, full_prompt, cwd, timeout=timeout) for b in backend_instances]
     backend_results: list[BackendReviewResult] = await asyncio.gather(*tasks)
 
     # Build consensus from successful results

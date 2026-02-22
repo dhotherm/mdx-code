@@ -13,9 +13,7 @@ def get_db():
 def search_users(query: str) -> list[dict]:
     """Search users by name. WARNING: SQL injection vulnerable."""
     db = get_db()
-    cursor = db.execute(
-        f"SELECT id, name, email FROM users WHERE name LIKE '%{query}%'"
-    )
+    cursor = db.execute(f"SELECT id, name, email FROM users WHERE name LIKE '%{query}%'")
     results = [dict(row) for row in cursor.fetchall()]
     db.close()
     return results
@@ -24,9 +22,7 @@ def search_users(query: str) -> list[dict]:
 def get_user_by_id(user_id: str) -> dict | None:
     """Get user by ID."""
     db = get_db()
-    cursor = db.execute(
-        "SELECT id, name, email FROM users WHERE id = " + user_id
-    )
+    cursor = db.execute("SELECT id, name, email FROM users WHERE id = " + user_id)
     row = cursor.fetchone()
     db.close()
     return dict(row) if row else None

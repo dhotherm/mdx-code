@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 STATE_FILE = Path.home() / ".mdx" / "circuit_breaker.json"
 
 
@@ -76,9 +75,7 @@ class CircuitBreaker:
 
                 if is_open:
                     elapsed = now - self.circuit_open_since[backend_name]
-                    last_failure_wall = (
-                        wall_now.timestamp() - elapsed
-                    )
+                    last_failure_wall = wall_now.timestamp() - elapsed
                     last_failure_iso = datetime.fromtimestamp(
                         last_failure_wall, tz=timezone.utc
                     ).isoformat()
@@ -97,9 +94,7 @@ class CircuitBreaker:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
 
             # Atomic write via temp file + rename
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(self.state_file.parent), suffix=".tmp"
-            )
+            fd, tmp_path = tempfile.mkstemp(dir=str(self.state_file.parent), suffix=".tmp")
             try:
                 with open(fd, "w") as f:
                     json.dump(data, f, indent=2)

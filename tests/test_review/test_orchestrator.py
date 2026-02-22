@@ -21,20 +21,22 @@ from mdxcode.review.orchestrator import (
 @pytest.fixture
 def sample_findings_json():
     """JSON output simulating a backend's review findings."""
-    return json.dumps({
-        "findings": [
-            {
-                "file": "test.py",
-                "line": 10,
-                "severity": "high",
-                "category": "security",
-                "title": "SQL Injection",
-                "description": "Unsanitized input in query",
-                "cwe_id": "CWE-89",
-                "suggestion": "Use parameterized queries",
-            }
-        ]
-    })
+    return json.dumps(
+        {
+            "findings": [
+                {
+                    "file": "test.py",
+                    "line": 10,
+                    "severity": "high",
+                    "category": "security",
+                    "title": "SQL Injection",
+                    "description": "Unsanitized input in query",
+                    "cwe_id": "CWE-89",
+                    "suggestion": "Use parameterized queries",
+                }
+            ]
+        }
+    )
 
 
 @pytest.fixture
@@ -246,9 +248,7 @@ class TestRunReview:
         assert len(result.consensus.confirmed) == 0
 
     @pytest.mark.asyncio
-    async def test_one_backend_times_out_other_still_works(
-        self, sample_findings_json
-    ):
+    async def test_one_backend_times_out_other_still_works(self, sample_findings_json):
         """If one backend times out, we still get results from the other."""
         target = ReviewTarget(
             files=["test.py"],

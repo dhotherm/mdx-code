@@ -45,11 +45,15 @@ mdx setup
 
 ## Why MDx Code Exists
 
-AI coding CLIs are powerful but isolated. Claude Code, Codex CLI, and Gemini CLI each operate as silos — different strengths, different cost profiles, no shared governance. A developer picks one and hopes for the best. There's no routing intelligence, no cross-validation, no audit trail, and no cost visibility across tools.
+Every AI coding CLI is a silo. Claude Code is incredible at deep reasoning. Codex is fast and cheap. Gemini handles massive context. But none of them talk to each other...none of them track what they cost you...and none of them give your security team the audit trail they need to say yes.
 
-Enterprises face a harder version of this problem. Regulatory frameworks (SOC 2, HIPAA, OSFI) require auditability. Security-sensitive code needs more than one opinion. Budgets need guardrails. But bolting governance onto each individual CLI doesn't scale — you end up with fragmented policies and no single source of truth.
+That's the gap. The tools are ready. The governance isn't.
 
-MDx Code is the missing layer. It doesn't replace your AI coding tools — it orchestrates them. Think of it as the engineering manager that sits between your developers (AI backends) and your organization's policies. It routes tasks to the right model, cross-validates critical code through adversarial review, tracks every action in a chain-hashed audit trail, and gives you a single spending dashboard across all backends. One CLI, multiple brains, full governance.
+If you're in a regulated environment...SOC 2, HIPAA, OSFI...you already know the problem. You can't just let 3 different AI agents push code with no cross-validation, no cost visibility, and no single source of truth. It doesn't fly.
+
+MDx Code is the missing layer. It doesn't replace Claude, Codex, or Gemini...it orchestrates them. Routes the right task to the right model at the right cost. Runs adversarial reviews where two models cross-validate each other's work...finding bugs neither catches alone. Logs every action in a chain-hashed audit trail your compliance team can actually verify. And does all of this with less than 200ms of overhead. The wrapper is invisible.
+
+Think of it this way...you wouldn't let 3 senior engineers push to production with no code review, no cost tracking, and no audit trail. Why would you let 3 AI coding agents do the same?
 
 ## Architecture
 

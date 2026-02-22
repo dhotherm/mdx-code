@@ -17,7 +17,6 @@ from mdxcode.cli import (
     _show_routing_line,
 )
 
-
 # ── Feature 5: Category Icons ──
 
 
@@ -26,9 +25,14 @@ class TestCategoryIcons:
 
     def test_all_categories_have_icons(self):
         expected = {
-            "code_review", "debugging", "code_generation",
-            "documentation", "security", "refactoring",
-            "test_writing", "general",
+            "code_review",
+            "debugging",
+            "code_generation",
+            "documentation",
+            "security",
+            "refactoring",
+            "test_writing",
+            "general",
         }
         assert set(CATEGORY_ICONS.keys()) == expected
 
@@ -50,6 +54,7 @@ class TestProjectContext:
     def setup_method(self):
         # Reset cache before each test
         import mdxcode.cli
+
         mdxcode.cli._project_context_cache = None
 
     def test_returns_string(self):
@@ -124,6 +129,7 @@ class TestShowRoutingLine:
 
     def setup_method(self):
         import mdxcode.cli
+
         mdxcode.cli._project_context_cache = None
 
     @patch("mdxcode.cli.console")
@@ -151,7 +157,10 @@ class TestShowRoutingLine:
     def test_shows_scores(self, mock_ctx, mock_console):
         scores = {"claude": 0.9, "gemini": 0.7}
         _show_routing_line(
-            "claude", "debugging", scores=scores, category="debugging",
+            "claude",
+            "debugging",
+            scores=scores,
+            category="debugging",
         )
         # Should have two print calls: routing line + scores
         assert mock_console.print.call_count == 2
@@ -438,8 +447,7 @@ class TestSmartErrorRecovery:
         for text in rate_limit_texts:
             lower = text.lower()
             assert any(
-                kw in lower
-                for kw in ("rate limit", "429", "too many requests", "quota")
+                kw in lower for kw in ("rate limit", "429", "too many requests", "quota")
             ), f"Rate limit not detected in: {text}"
 
         for text in auth_texts:
@@ -456,8 +464,7 @@ class TestSmartErrorRecovery:
         for text in network_texts:
             lower = text.lower()
             assert any(
-                kw in lower
-                for kw in ("connection", "network", "dns", "unreachable")
+                kw in lower for kw in ("connection", "network", "dns", "unreachable")
             ), f"Network error not detected in: {text}"
 
 
@@ -477,7 +484,11 @@ class TestTimingIntelligence:
         assert result is None
 
     def test_get_average_duration_with_data(self, tmp_path):
-        from mdxcode.governance.audit_trail import AuditEntry, get_average_duration, write_audit_entry
+        from mdxcode.governance.audit_trail import (
+            AuditEntry,
+            get_average_duration,
+            write_audit_entry,
+        )
 
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
@@ -494,14 +505,20 @@ class TestTimingIntelligence:
             write_audit_entry(entry, audit_dir=audit_dir)
 
         avg = get_average_duration(
-            audit_dir=audit_dir, backend="claude", task_category="debugging",
+            audit_dir=audit_dir,
+            backend="claude",
+            task_category="debugging",
         )
         assert avg is not None
         # Average of 10, 11, 12, 13, 14, 15 = 12.5
         assert abs(avg - 12.5) < 0.1
 
     def test_get_average_duration_filters_by_backend(self, tmp_path):
-        from mdxcode.governance.audit_trail import AuditEntry, get_average_duration, write_audit_entry
+        from mdxcode.governance.audit_trail import (
+            AuditEntry,
+            get_average_duration,
+            write_audit_entry,
+        )
 
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
@@ -531,7 +548,11 @@ class TestTimingIntelligence:
         assert get_average_duration(audit_dir=audit_dir, backend="gemini") is None
 
     def test_get_average_duration_excludes_failures(self, tmp_path):
-        from mdxcode.governance.audit_trail import AuditEntry, get_average_duration, write_audit_entry
+        from mdxcode.governance.audit_trail import (
+            AuditEntry,
+            get_average_duration,
+            write_audit_entry,
+        )
 
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
@@ -549,7 +570,11 @@ class TestTimingIntelligence:
         assert get_average_duration(audit_dir=audit_dir) is None
 
     def test_get_average_duration_excludes_reviews(self, tmp_path):
-        from mdxcode.governance.audit_trail import AuditEntry, get_average_duration, write_audit_entry
+        from mdxcode.governance.audit_trail import (
+            AuditEntry,
+            get_average_duration,
+            write_audit_entry,
+        )
 
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
@@ -576,6 +601,7 @@ class TestGracefulDegradation:
         """NO_COLOR env var is read at import time."""
         # We just test the module-level constant exists
         from mdxcode.cli import NO_COLOR
+
         assert isinstance(NO_COLOR, bool)
 
     def test_streamer_looks_like_markdown(self):
@@ -650,7 +676,13 @@ class TestSummaryCommand:
     @patch("mdxcode.router.cost_tracker.get_savings", return_value=0.01)
     @patch("mdxcode.router.cost_tracker.get_date_range_for_period")
     def test_summary_shows_stats(
-        self, mock_period, mock_savings, mock_cost, mock_entries, mock_config, mock_console,
+        self,
+        mock_period,
+        mock_savings,
+        mock_cost,
+        mock_entries,
+        mock_config,
+        mock_console,
     ):
         from mdxcode.cli import summary
 
@@ -692,7 +724,13 @@ class TestSummaryCommand:
     @patch("mdxcode.router.cost_tracker.get_savings", return_value=0.0)
     @patch("mdxcode.router.cost_tracker.get_date_range_for_period")
     def test_summary_empty(
-        self, mock_period, mock_savings, mock_cost, mock_entries, mock_config, mock_console,
+        self,
+        mock_period,
+        mock_savings,
+        mock_cost,
+        mock_entries,
+        mock_config,
+        mock_console,
     ):
         from mdxcode.cli import summary
 
@@ -851,8 +889,14 @@ class TestAuditTableCategoryIcons:
         ]
 
         audit(
-            count=10, path=None, since=None, entry_type=None,
-            backend_filter=None, verify=False, export=None, stats=False,
+            count=10,
+            path=None,
+            since=None,
+            entry_type=None,
+            backend_filter=None,
+            verify=False,
+            export=None,
+            stats=False,
         )
         # The table should have been printed
         assert mock_console.print.called

@@ -11,7 +11,6 @@ from mdxcode.governance.policy_engine import (
     load_policy_file,
 )
 
-
 HOOK_MARKER = "# MDx Code pre-commit hook"
 
 

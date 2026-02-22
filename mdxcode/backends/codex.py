@@ -49,7 +49,8 @@ class CodexBackend(Backend):
         """Get Codex CLI version string."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -62,7 +63,8 @@ class CodexBackend(Backend):
         """Check if Codex CLI is authenticated."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -79,7 +81,11 @@ class CodexBackend(Backend):
         Streams stdout line-by-line as it arrives.
         """
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "--quiet", "--approval-mode", "full-auto", task,
+            self.cli_command,
+            "--quiet",
+            "--approval-mode",
+            "full-auto",
+            task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -111,9 +117,7 @@ class CodexBackend(Backend):
 
     execute.__doc__ = """Execute a task via Codex CLI and stream output."""
 
-    async def _stream_lines(
-        self, stream: asyncio.StreamReader
-    ) -> AsyncIterator[str]:
+    async def _stream_lines(self, stream: asyncio.StreamReader) -> AsyncIterator[str]:
         """Read lines from an async stream with timeout."""
         while True:
             try:
@@ -131,7 +135,11 @@ class CodexBackend(Backend):
         exit_code = 0
 
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "--quiet", "--approval-mode", "full-auto", task,
+            self.cli_command,
+            "--quiet",
+            "--approval-mode",
+            "full-auto",
+            task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -177,7 +185,8 @@ class CodexBackend(Backend):
         try:
             start = time.monotonic()
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

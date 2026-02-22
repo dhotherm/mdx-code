@@ -56,9 +56,7 @@ async def stream_output(chunks: AsyncIterator[str]) -> tuple[str, float]:
             while True:
                 elapsed = time.monotonic() - start
                 phase = "Receiving..." if receiving else "Thinking..."
-                status.update(
-                    Spinner("dots", text=f"[dim] {phase} {elapsed:.1f}s[/dim]")
-                )
+                status.update(Spinner("dots", text=f"[dim] {phase} {elapsed:.1f}s[/dim]"))
                 await asyncio.sleep(0.1)
 
         timer_task = asyncio.create_task(update_timer())

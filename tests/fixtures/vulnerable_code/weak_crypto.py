@@ -4,16 +4,13 @@
 import hashlib
 import os
 
-
 SALT = "fixed_salt_value"
 
 
 def hash_password(password: str) -> str:
     """Hash a password for storage. WARNING: uses MD5."""
     # MD5 is cryptographically broken for password hashing
-    return hashlib.md5(
-        (SALT + password).encode()
-    ).hexdigest()
+    return hashlib.md5((SALT + password).encode()).hexdigest()
 
 
 def verify_password(password: str, stored_hash: str) -> bool:

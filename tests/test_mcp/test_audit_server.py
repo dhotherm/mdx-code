@@ -129,7 +129,9 @@ class TestQueryAudit:
 
     @patch("mcp_servers.audit.server.read_filtered_entries")
     @patch("mcp_servers.audit.server.load_config")
-    def test_query_with_since_filter(self, mock_config_fn, mock_filtered, mock_config, sample_entries):
+    def test_query_with_since_filter(
+        self, mock_config_fn, mock_filtered, mock_config, sample_entries
+    ):
         mock_config_fn.return_value = mock_config
         mock_filtered.return_value = sample_entries
 
@@ -142,7 +144,9 @@ class TestQueryAudit:
 
     @patch("mcp_servers.audit.server.read_filtered_entries")
     @patch("mcp_servers.audit.server.load_config")
-    def test_query_with_path_filter(self, mock_config_fn, mock_filtered, mock_config, sample_entries):
+    def test_query_with_path_filter(
+        self, mock_config_fn, mock_filtered, mock_config, sample_entries
+    ):
         mock_config_fn.return_value = mock_config
         mock_filtered.return_value = sample_entries
 

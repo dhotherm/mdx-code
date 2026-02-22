@@ -108,7 +108,9 @@ class TestCodexStreaming:
         mock_stdout.readline = AsyncMock(side_effect=[b""])
         mock_proc.stdout = mock_stdout
         mock_proc.stderr = AsyncMock()
-        mock_proc.stderr.read = AsyncMock(return_value=b"Error: authentication required. Please login first.")
+        mock_proc.stderr.read = AsyncMock(
+            return_value=b"Error: authentication required. Please login first."
+        )
         mock_proc.wait = AsyncMock()
         mock_proc.returncode = 1
 

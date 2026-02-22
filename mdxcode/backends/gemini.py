@@ -49,7 +49,8 @@ class GeminiBackend(Backend):
         """Get Gemini CLI version string."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -62,7 +63,8 @@ class GeminiBackend(Backend):
         """Check if Gemini CLI is authenticated (Google Cloud credentials)."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -79,7 +81,9 @@ class GeminiBackend(Backend):
         Streams stdout line-by-line as it arrives.
         """
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task,
+            self.cli_command,
+            "-p",
+            task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -111,9 +115,7 @@ class GeminiBackend(Backend):
 
     execute.__doc__ = """Execute a task via Gemini CLI and stream output."""
 
-    async def _stream_lines(
-        self, stream: asyncio.StreamReader
-    ) -> AsyncIterator[str]:
+    async def _stream_lines(self, stream: asyncio.StreamReader) -> AsyncIterator[str]:
         """Read lines from an async stream with timeout."""
         while True:
             try:
@@ -131,7 +133,9 @@ class GeminiBackend(Backend):
         exit_code = 0
 
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task,
+            self.cli_command,
+            "-p",
+            task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -177,7 +181,8 @@ class GeminiBackend(Backend):
         try:
             start = time.monotonic()
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

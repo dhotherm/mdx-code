@@ -3,7 +3,6 @@
 
 import requests
 
-
 API_BASE = "https://api.stripe.com/v1"
 
 # Hardcoded API keys — should be in environment variables
@@ -40,6 +39,7 @@ def get_balance() -> dict:
 def connect_db():
     """Connect to database with hardcoded password."""
     import psycopg2
+
     return psycopg2.connect(
         host="db.production.internal",
         database="app_prod",

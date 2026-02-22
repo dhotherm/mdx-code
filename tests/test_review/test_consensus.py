@@ -84,16 +84,22 @@ class TestFindingsMatch:
 
     def test_same_cwe_different_category(self):
         a = _make_finding(file="a.py", line=10, category="security", cwe_id="CWE-89")
-        b = _make_finding(file="a.py", line=12, category="quality", cwe_id="CWE-89", source_backend="codex")
+        b = _make_finding(
+            file="a.py", line=12, category="quality", cwe_id="CWE-89", source_backend="codex"
+        )
         assert _findings_match(a, b) is True
 
     def test_fuzzy_matching_by_keywords(self):
         a = _make_finding(
-            file="a.py", line=10, category="security",
+            file="a.py",
+            line=10,
+            category="security",
             title="SQL injection vulnerability in query",
         )
         b = _make_finding(
-            file="a.py", line=11, category="security",
+            file="a.py",
+            line=11,
+            category="security",
             title="SQL injection in database query",
             source_backend="codex",
         )
@@ -101,7 +107,9 @@ class TestFindingsMatch:
 
     def test_within_five_lines(self):
         a = _make_finding(file="a.py", line=10, category="security", cwe_id="CWE-89")
-        b = _make_finding(file="a.py", line=14, category="security", cwe_id="CWE-89", source_backend="codex")
+        b = _make_finding(
+            file="a.py", line=14, category="security", cwe_id="CWE-89", source_backend="codex"
+        )
         assert _findings_match(a, b) is True
 
 
@@ -110,8 +118,12 @@ class TestBuildConsensus:
 
     def test_two_backends_same_issue_confirmed(self):
         findings_by_backend = {
-            "claude": [_make_finding(file="a.py", line=10, category="security", source_backend="claude")],
-            "codex": [_make_finding(file="a.py", line=10, category="security", source_backend="codex")],
+            "claude": [
+                _make_finding(file="a.py", line=10, category="security", source_backend="claude")
+            ],
+            "codex": [
+                _make_finding(file="a.py", line=10, category="security", source_backend="codex")
+            ],
         }
         result = build_consensus(findings_by_backend)
         assert len(result.confirmed) == 1
@@ -133,7 +145,9 @@ class TestBuildConsensus:
     def test_severity_conflict_major(self):
         """Major severity mismatch (2+ ranks) → conflict."""
         findings_by_backend = {
-            "claude": [_make_finding(file="a.py", line=10, severity="critical", source_backend="claude")],
+            "claude": [
+                _make_finding(file="a.py", line=10, severity="critical", source_backend="claude")
+            ],
             "codex": [_make_finding(file="a.py", line=10, severity="low", source_backend="codex")],
         }
         result = build_consensus(findings_by_backend)
@@ -143,8 +157,12 @@ class TestBuildConsensus:
     def test_severity_conflict_minor_still_confirms(self):
         """Minor severity difference (1 rank) → confirmed with higher severity."""
         findings_by_backend = {
-            "claude": [_make_finding(file="a.py", line=10, severity="high", source_backend="claude")],
-            "codex": [_make_finding(file="a.py", line=10, severity="medium", source_backend="codex")],
+            "claude": [
+                _make_finding(file="a.py", line=10, severity="high", source_backend="claude")
+            ],
+            "codex": [
+                _make_finding(file="a.py", line=10, severity="medium", source_backend="codex")
+            ],
         }
         result = build_consensus(findings_by_backend)
         assert len(result.confirmed) == 1
@@ -152,14 +170,26 @@ class TestBuildConsensus:
 
     def test_fuzzy_same_cwe_within_five_lines(self):
         findings_by_backend = {
-            "claude": [_make_finding(
-                file="auth.py", line=15, cwe_id="CWE-89", category="security",
-                title="SQL injection", source_backend="claude",
-            )],
-            "codex": [_make_finding(
-                file="auth.py", line=18, cwe_id="CWE-89", category="security",
-                title="Unsanitized query", source_backend="codex",
-            )],
+            "claude": [
+                _make_finding(
+                    file="auth.py",
+                    line=15,
+                    cwe_id="CWE-89",
+                    category="security",
+                    title="SQL injection",
+                    source_backend="claude",
+                )
+            ],
+            "codex": [
+                _make_finding(
+                    file="auth.py",
+                    line=18,
+                    cwe_id="CWE-89",
+                    category="security",
+                    title="Unsanitized query",
+                    source_backend="codex",
+                )
+            ],
         }
         result = build_consensus(findings_by_backend)
         assert len(result.confirmed) == 1
@@ -194,7 +224,9 @@ class TestBuildConsensus:
 
     def test_confirmed_uses_higher_severity(self):
         findings_by_backend = {
-            "claude": [_make_finding(file="a.py", line=10, severity="medium", source_backend="claude")],
+            "claude": [
+                _make_finding(file="a.py", line=10, severity="medium", source_backend="claude")
+            ],
             "codex": [_make_finding(file="a.py", line=10, severity="high", source_backend="codex")],
         }
         result = build_consensus(findings_by_backend)

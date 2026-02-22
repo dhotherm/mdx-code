@@ -226,9 +226,7 @@ class TestReadFilteredEntriesIntegration:
 
     def test_filter_by_entry_type(self, audit_dir):
         entry1 = AuditEntry(session_id="r1", task="fix bug", backend="claude")
-        entry2 = AuditEntry(
-            session_id="r2", task="adversarial_review: src/", backend="codex"
-        )
+        entry2 = AuditEntry(session_id="r2", task="adversarial_review: src/", backend="codex")
         write_audit_entry(entry1, audit_dir)
         write_audit_entry(entry2, audit_dir)
 
@@ -238,11 +236,15 @@ class TestReadFilteredEntriesIntegration:
 
     def test_combined_filters(self, audit_dir):
         entry1 = AuditEntry(
-            session_id="c1", task="fix bug", backend="claude",
+            session_id="c1",
+            task="fix bug",
+            backend="claude",
             working_directory="/home/project",
         )
         entry2 = AuditEntry(
-            session_id="c2", task="fix bug", backend="codex",
+            session_id="c2",
+            task="fix bug",
+            backend="codex",
             working_directory="/home/project",
         )
         write_audit_entry(entry1, audit_dir)

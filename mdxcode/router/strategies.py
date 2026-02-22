@@ -60,11 +60,11 @@ def route_cost_optimized(
     cheapest = min(
         available_backends,
         key=lambda n: (
-            profiles[n].cost_per_1k_tokens["input"] + profiles[n].cost_per_1k_tokens["output"]
-        )
-        / 2.0
-        if n in profiles
-        else float("inf"),
+            (profiles[n].cost_per_1k_tokens["input"] + profiles[n].cost_per_1k_tokens["output"])
+            / 2.0
+            if n in profiles
+            else float("inf")
+        ),
     )
 
     if is_strength and best != cheapest:
@@ -75,12 +75,14 @@ def route_cost_optimized(
             most_expensive = max(
                 available_backends,
                 key=lambda n: (
-                    profiles[n].cost_per_1k_tokens["input"]
-                    + profiles[n].cost_per_1k_tokens["output"]
-                )
-                / 2.0
-                if n in profiles
-                else 0.0,
+                    (
+                        profiles[n].cost_per_1k_tokens["input"]
+                        + profiles[n].cost_per_1k_tokens["output"]
+                    )
+                    / 2.0
+                    if n in profiles
+                    else 0.0
+                ),
             )
             if most_expensive != best and most_expensive in profiles:
                 best_avg = (

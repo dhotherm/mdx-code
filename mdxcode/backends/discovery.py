@@ -14,7 +14,6 @@ from .opencode import OpenCodeBackend
 
 from ..config import MDX_DIR
 
-
 # Registry of all known backends, in preference order
 BACKEND_CLASSES: list[type[Backend]] = [
     ClaudeBackend,
@@ -101,8 +100,7 @@ def _save_discovery_cache(backends: list[BackendInfo]) -> None:
         cache = {
             "timestamp": time.time(),
             "backends": [
-                b.model_dump() if hasattr(b, "model_dump") else b.__dict__
-                for b in backends
+                b.model_dump() if hasattr(b, "model_dump") else b.__dict__ for b in backends
             ],
         }
         BACKEND_CACHE_PATH.write_text(json.dumps(cache))

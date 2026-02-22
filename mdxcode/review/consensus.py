@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 
 from .normalizer import Finding
 
-
 SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
 # Two findings match if their lines are within this many lines of each other
@@ -81,11 +80,47 @@ def _lines_overlap_or_near(
 def _extract_keywords(text: str) -> set[str]:
     """Extract significant keywords from a title or description for fuzzy matching."""
     stop_words = {
-        "the", "a", "an", "is", "are", "in", "on", "at", "to", "for",
-        "of", "with", "by", "from", "not", "no", "and", "or", "but",
-        "this", "that", "it", "be", "has", "have", "had", "do", "does",
-        "did", "will", "would", "could", "should", "may", "might",
-        "use", "using", "used", "code", "issue", "found",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "not",
+        "no",
+        "and",
+        "or",
+        "but",
+        "this",
+        "that",
+        "it",
+        "be",
+        "has",
+        "have",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "use",
+        "using",
+        "used",
+        "code",
+        "issue",
+        "found",
     }
     words = set(text.lower().split())
     return words - stop_words
@@ -183,10 +218,7 @@ def build_consensus(
     if len(backend_names) == 1:
         name = backend_names[0]
         return ConsensusResult(
-            unique=[
-                UniqueFinding(finding=f, found_by=name)
-                for f in findings_by_backend[name]
-            ],
+            unique=[UniqueFinding(finding=f, found_by=name) for f in findings_by_backend[name]],
         )
 
     # Track which findings have been matched

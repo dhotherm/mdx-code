@@ -49,7 +49,8 @@ class ClaudeBackend(Backend):
         """Get Claude Code version string."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -66,7 +67,8 @@ class ClaudeBackend(Backend):
         # For now, consider it authenticated if the CLI is available and responds.
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -83,7 +85,9 @@ class ClaudeBackend(Backend):
         Streams stdout line-by-line as it arrives.
         """
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task,
+            self.cli_command,
+            "-p",
+            task,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -116,9 +120,7 @@ class ClaudeBackend(Backend):
     # Make execute() return an AsyncIterator properly
     execute.__doc__ = """Execute a task via Claude Code and stream output."""
 
-    async def _stream_lines(
-        self, stream: asyncio.StreamReader
-    ) -> AsyncIterator[str]:
+    async def _stream_lines(self, stream: asyncio.StreamReader) -> AsyncIterator[str]:
         """Read lines from an async stream with timeout."""
         while True:
             try:
@@ -136,7 +138,11 @@ class ClaudeBackend(Backend):
         exit_code = 0
 
         proc = await asyncio.create_subprocess_exec(
-            self.cli_command, "-p", task, "--output-format", "json",
+            self.cli_command,
+            "-p",
+            task,
+            "--output-format",
+            "json",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
@@ -183,7 +189,8 @@ class ClaudeBackend(Backend):
         try:
             start = time.monotonic()
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

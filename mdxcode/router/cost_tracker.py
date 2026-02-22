@@ -9,7 +9,6 @@ from typing import Optional
 
 from ..config import MDX_DIR
 
-
 DB_PATH = MDX_DIR / "costs.db"
 
 CREATE_TABLE_SQL = """
@@ -91,9 +90,19 @@ def record_cost(
                 routing_strategy, alternative_costs)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                entry_id, timestamp, session_id, backend, model,
-                task_category, task_summary, tokens_in, tokens_out,
-                cost_usd, estimated, routing_strategy, alt_costs_json,
+                entry_id,
+                timestamp,
+                session_id,
+                backend,
+                model,
+                task_category,
+                task_summary,
+                tokens_in,
+                tokens_out,
+                cost_usd,
+                estimated,
+                routing_strategy,
+                alt_costs_json,
             ),
         )
         conn.commit()

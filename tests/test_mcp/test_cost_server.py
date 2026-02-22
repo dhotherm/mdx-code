@@ -83,13 +83,20 @@ class TestGetSummary:
     @patch("mcp_servers.cost.server.get_cost_by_backend")
     @patch("mcp_servers.cost.server.get_total_cost")
     @patch("mcp_servers.cost.server.get_date_range_for_period")
-    def test_get_summary_week(self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top):
+    def test_get_summary_week(
+        self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top
+    ):
         mock_period.return_value = ("2025-01-13T00:00:00", "2025-01-15T23:59:59")
         mock_total.return_value = 5.50
         mock_by_backend.return_value = {"claude": 3.00, "codex": 2.50}
         mock_savings.return_value = 1.25
         mock_top.return_value = [
-            {"task_summary": "fix auth bug", "backend": "claude", "cost_usd": 0.50, "timestamp": "2025-01-15"},
+            {
+                "task_summary": "fix auth bug",
+                "backend": "claude",
+                "cost_usd": 0.50,
+                "timestamp": "2025-01-15",
+            },
         ]
 
         result = get_summary(period="week")
@@ -105,7 +112,9 @@ class TestGetSummary:
     @patch("mcp_servers.cost.server.get_cost_by_backend")
     @patch("mcp_servers.cost.server.get_total_cost")
     @patch("mcp_servers.cost.server.get_date_range_for_period")
-    def test_get_summary_today(self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top):
+    def test_get_summary_today(
+        self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top
+    ):
         mock_period.return_value = ("2025-01-15T00:00:00", "2025-01-15T23:59:59")
         mock_total.return_value = 0.0
         mock_by_backend.return_value = {}
@@ -124,7 +133,9 @@ class TestGetSummary:
     @patch("mcp_servers.cost.server.get_cost_by_backend")
     @patch("mcp_servers.cost.server.get_total_cost")
     @patch("mcp_servers.cost.server.get_date_range_for_period")
-    def test_get_summary_month(self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top):
+    def test_get_summary_month(
+        self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top
+    ):
         mock_period.return_value = ("2025-01-01T00:00:00", "2025-01-15T23:59:59")
         mock_total.return_value = 25.0
         mock_by_backend.return_value = {"claude": 15.0, "gemini": 10.0}
@@ -150,7 +161,9 @@ class TestGetSummary:
     @patch("mcp_servers.cost.server.get_cost_by_backend")
     @patch("mcp_servers.cost.server.get_total_cost")
     @patch("mcp_servers.cost.server.get_date_range_for_period")
-    def test_get_summary_default_period(self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top):
+    def test_get_summary_default_period(
+        self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top
+    ):
         mock_period.return_value = ("2025-01-13T00:00:00", "2025-01-15T23:59:59")
         mock_total.return_value = 0.0
         mock_by_backend.return_value = {}
@@ -174,7 +187,9 @@ class TestGetSummary:
     @patch("mcp_servers.cost.server.get_cost_by_backend")
     @patch("mcp_servers.cost.server.get_total_cost")
     @patch("mcp_servers.cost.server.get_date_range_for_period")
-    def test_get_summary_rounds_values(self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top):
+    def test_get_summary_rounds_values(
+        self, mock_period, mock_total, mock_by_backend, mock_savings, mock_top
+    ):
         mock_period.return_value = ("2025-01-13T00:00:00", "2025-01-15T23:59:59")
         mock_total.return_value = 1.23456789
         mock_by_backend.return_value = {"claude": 0.987654321}

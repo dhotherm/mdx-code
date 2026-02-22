@@ -80,7 +80,9 @@ class TestCheckPolicy:
 
     @patch("mcp_servers.governance.server.evaluate_policies")
     @patch("mcp_servers.governance.server.load_policy_file")
-    def test_check_policy_with_match(self, mock_load, mock_eval, sample_policy_file, security_result):
+    def test_check_policy_with_match(
+        self, mock_load, mock_eval, sample_policy_file, security_result
+    ):
         mock_load.return_value = sample_policy_file
         mock_eval.return_value = security_result
 
@@ -115,7 +117,9 @@ class TestCheckPolicy:
 
     @patch("mcp_servers.governance.server.evaluate_policies")
     @patch("mcp_servers.governance.server.load_policy_file")
-    def test_check_policy_with_custom_path(self, mock_load, mock_eval, sample_policy_file, clean_result):
+    def test_check_policy_with_custom_path(
+        self, mock_load, mock_eval, sample_policy_file, clean_result
+    ):
         mock_load.return_value = sample_policy_file
         mock_eval.return_value = clean_result
 
@@ -184,7 +188,9 @@ class TestEvaluateCommit:
 
     @patch("mcp_servers.governance.server.evaluate_policies")
     @patch("mcp_servers.governance.server.load_policy_file")
-    def test_commit_blocked_by_policy(self, mock_load, mock_eval, sample_policy_file, security_result):
+    def test_commit_blocked_by_policy(
+        self, mock_load, mock_eval, sample_policy_file, security_result
+    ):
         mock_load.return_value = sample_policy_file
         mock_eval.return_value = security_result
 

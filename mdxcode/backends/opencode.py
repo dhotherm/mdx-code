@@ -53,7 +53,8 @@ class OpenCodeBackend(Backend):
         """Get OpenCode version string."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -87,7 +88,8 @@ class OpenCodeBackend(Backend):
         try:
             start = time.monotonic()
             proc = await asyncio.create_subprocess_exec(
-                self.cli_command, "--version",
+                self.cli_command,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

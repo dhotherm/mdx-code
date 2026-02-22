@@ -91,9 +91,7 @@ class TestReadFilteredEntries:
         assert len(entries) == 3
 
     def test_multiple_filters(self, populated_audit_dir):
-        entries = read_filtered_entries(
-            populated_audit_dir, backend="claude", path="/project/src"
-        )
+        entries = read_filtered_entries(populated_audit_dir, backend="claude", path="/project/src")
         assert len(entries) == 1
 
     def test_empty_audit_dir(self, audit_dir):

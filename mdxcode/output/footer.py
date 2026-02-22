@@ -83,7 +83,9 @@ def show_footer(
     # Daily budget progress
     if daily_budget and daily_spent is not None:
         pct = (daily_spent / daily_budget) * 100
-        console.print(f"    [dim]Daily: ${daily_spent:.2f} / ${daily_budget:.2f} ({pct:.0f}%)[/dim]")
+        console.print(
+            f"    [dim]Daily: ${daily_spent:.2f} / ${daily_budget:.2f} ({pct:.0f}%)[/dim]"
+        )
 
     console.print(f"[dim]{separator}[/dim]")
 

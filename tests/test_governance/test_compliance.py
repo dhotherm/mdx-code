@@ -2,7 +2,6 @@
 
 from mdxcode.governance.compliance import COMPLIANCE_MATRIX, get_compliance_matrix
 
-
 EXPECTED_FRAMEWORKS = {"SOC2", "EU_AI_Act", "OSFI_B13", "OCC_2011_12"}
 EXPECTED_FEATURES = {
     "audit_trail",
@@ -33,12 +32,8 @@ class TestComplianceMatrix:
         matrix = get_compliance_matrix()
         for framework, features in matrix.items():
             for feature, description in features.items():
-                assert isinstance(description, str), (
-                    f"{framework}.{feature} should be a string"
-                )
-                assert len(description) > 0, (
-                    f"{framework}.{feature} should not be empty"
-                )
+                assert isinstance(description, str), f"{framework}.{feature} should be a string"
+                assert len(description) > 0, f"{framework}.{feature} should not be empty"
 
     def test_returns_same_reference(self):
         """get_compliance_matrix() returns the module-level constant."""

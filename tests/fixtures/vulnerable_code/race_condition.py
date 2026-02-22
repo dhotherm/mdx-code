@@ -4,7 +4,6 @@
 import os
 import shutil
 
-
 UPLOAD_DIR = "/var/app/uploads"
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -40,6 +39,7 @@ def process_upload(filepath: str, dest_dir: str) -> str:
 def update_config(config_path: str, new_config: dict) -> None:
     """Update config file. WARNING: no file locking."""
     import json
+
     # Read current config
     with open(config_path) as f:
         current = json.load(f)

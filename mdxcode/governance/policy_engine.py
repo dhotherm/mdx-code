@@ -114,7 +114,7 @@ def _match_segments(path_parts: list[str], pattern_segments: list[str]) -> bool:
         if not fnmatch.fnmatch(pp, sp):
             return False
 
-    return _match_segments(path_parts[len(seg_parts):], remaining_segments)
+    return _match_segments(path_parts[len(seg_parts) :], remaining_segments)
 
 
 def _match_path(filepath: str, pattern: str) -> bool:
