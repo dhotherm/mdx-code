@@ -39,8 +39,7 @@ First-run wizard guides you through setup automatically.
 ### Manual Install
 
 ```bash
-pip install -e .
-mdx setup
+pip install mdx-code
 ```
 
 ## Why MDx Code Exists
