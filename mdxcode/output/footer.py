@@ -68,7 +68,8 @@ def show_footer(
                     sign = "+" if diff > 0 else ""
                     alts.append(f"{alt_name.title()} ${alt_cost:.4f} ({sign}${diff:.4f})")
             if alts:
-                console.print(f"    [dim]vs. {' \u00b7 '.join(alts)}[/dim]")
+                alts_str = " \u00b7 ".join(alts)
+                console.print(f"    [dim]vs. {alts_str}[/dim]")
 
     # Audit line (merge with review hint when there are file changes)
     session_short = session_id[:8] if len(session_id) >= 8 else session_id
