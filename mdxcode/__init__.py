@@ -1,3 +1,3 @@
 """MDx Code — The AI Engineering Manager for your codebase."""
 
-__version__ = "2.0.0-alpha.1"
+__version__ = "0.2.0"

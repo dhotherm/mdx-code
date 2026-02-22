@@ -1,4 +1,4 @@
-# CLAUDE.md — MDx Code v2
+# CLAUDE.md — MDx Code
 
 ## What This Is
 MDx Code is the AI Engineering Manager for codebases. It orchestrates
@@ -11,9 +11,12 @@ It wraps them with orchestration. Don't create tools or agent loops.
 
 ## Architecture
 - `backends/` — Adapters for each CLI (spawn subprocess, stream output)
-- `router/` — Smart routing and cost tracking (Session 3)
-- `review/` — Adversarial multi-model review (Session 4)
-- `governance/` — Policy engine, audit trail, compliance
+- `router/` — Smart routing, task categorization, cost tracking
+- `review/` — Adversarial multi-model review with consensus
+- `governance/` — Policy engine, audit trail, compliance matrix
+- `output/` — Rich streaming, footer, color support
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for full design documentation.
 
 ## Quick Install
 ```bash
@@ -46,16 +49,31 @@ First-run wizard guides you through setup automatically.
 - `mdx mcp config` — Generate MCP client config
 - `mdx install-completion` — Shell tab-completion setup
 
-## Git Workflow
-- Work on `v2-dev` branch
-- NEVER push directly to `main`
-- Human squash merges to main after each session
-
 ## Testing
-- `pytest tests/` — All tests
+- `pytest tests/` — Full test suite (430 tests)
+- `python tests/smoke_test.py --fast` — Smoke tests (30 tests)
 - Keep tests fast (mock CLIs, no real API calls for unit tests)
 
-## Style
+## Code Style
 - Black, 100 char lines
 - Type hints on all functions
 - Docstrings on public methods
+
+## Adding a New Backend
+1. Create `mdxcode/backends/your_backend.py`, extend `Backend` from `base.py`
+2. Implement: `name`, `cli_command`, `is_available()`, `get_info()`, `execute()`, `execute_and_capture()`, `health_check()`
+3. Register in `backends/discovery.py` (`BACKEND_CLASSES`, `KNOWN_CLIS`)
+4. Add capability profile in `router/profiles.py`
+5. Add tests
+
+## Adding a New Command
+1. Add command function in `mdxcode/cli.py` with `@app.command()`
+2. Follow existing patterns (Rich output, error handling)
+3. Add tests
+4. Update commands table in README.md
+
+## Performance Budget
+- Total wrapper overhead must stay under 200ms
+- Cold start: 20ms (lazy imports — don't add module-level heavy imports)
+- Routing decision: 0.1ms
+- Footer displays before async writes complete
